@@ -16,6 +16,8 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
+use Symfony\Component\TypeInfo\Type\ObjectType;
 
 /**
  * Processes classes with the MapConfig attribute to map configuration parameters.
@@ -30,8 +32,15 @@ use Symfony\Component\DependencyInjection\Reference;
  */
 class MapConfigPass implements CompilerPassInterface
 {
+    private ?TypeResolver $typeResolver = null;
+    private array $hydrationStack = [];
+
     public function process(ContainerBuilder $container): void
     {
+        if (null === $this->typeResolver && class_exists(TypeResolver::class)) {
+            $this->typeResolver = TypeResolver::create();
+        }
+
         foreach ($container->findTaggedServiceIds('di.map_config', true) as $serviceId => $attributes) {
             $definition = $container->getDefinition($serviceId);
             $class = $definition->getClass();
@@ -56,7 +65,12 @@ class MapConfigPass implements CompilerPassInterface
                 continue;
             }
 
-            $this->configureDefinition($container, $definition, $reflectionClass, $mapConfigAttribute);
+            try {
+                $this->hydrationStack = []; // Reset stack for each service
+                $this->configureDefinition($container, $definition, $reflectionClass, $mapConfigAttribute);
+            } finally {
+                $this->hydrationStack = [];
+            }
         }
     }
 
@@ -74,6 +88,9 @@ class MapConfigPass implements CompilerPassInterface
         
         if ($configArray !== null && \is_array($configArray)) {
             $this->hydrateDefinition($container, $definition, $reflectionClass, $configArray, $entry);
+            
+            // Ensure we track the class existence so that the container is recompiled if the DTO changes
+            $container->addResource(new \Symfony\Component\Config\Resource\ClassExistenceResource($reflectionClass->getName()));
             return;
         }
 
@@ -84,23 +101,51 @@ class MapConfigPass implements CompilerPassInterface
         if ($this->shouldValidate($container, $reflectionClass)) {
             $this->addValidationConfigurator($container, $definition, $reflectionClass);
         }
+
+        // Ensure we track the class existence so that the container is recompiled if the DTO changes
+        $container->addResource(new \Symfony\Component\Config\Resource\ClassExistenceResource($reflectionClass->getName()));
     }
 
     private function hydrateDefinition(ContainerBuilder $container, Definition $definition, \ReflectionClass $reflectionClass, array $configArray, string $contextEntry): void
     {
-        $constructor = $reflectionClass->getConstructor();
-        $usedKeys = [];
+        $className = $reflectionClass->getName();
 
-        if ($constructor) {
-            $usedKeys = $this->mapArrayToConstructor($container, $definition, $constructor, $configArray, $reflectionClass, $contextEntry);
+        if (isset($this->hydrationStack[$className])) {
+            throw new \RuntimeException(sprintf('Circular reference detected for class "%s" during MapConfig processing.', $className));
         }
-        
-        // Map remaining keys to setters and public properties
-        $this->mapArrayToProperties($container, $definition, $reflectionClass, $configArray, $usedKeys, $contextEntry);
 
-        // Add validation if symfony/validator is available
-        if ($this->shouldValidate($container, $reflectionClass)) {
-            $this->addValidationConfigurator($container, $definition, $reflectionClass);
+        $this->hydrationStack[$className] = true;
+
+        try {
+            $constructor = $reflectionClass->getConstructor();
+            
+            // optimizations: Pre-normalize keys to camelCase for O(1) lookups
+            $normalizedConfig = [];
+            foreach ($configArray as $key => $value) {
+                $normalizedKey = $this->normalizeKey($key);
+                // If multiple keys normalize to the same value (e.g. snake_case and kebab-case),
+                // the last one overrides. This is acceptable behavior.
+                $normalizedConfig[$normalizedKey] = [
+                    'originalKey' => $key,
+                    'value' => $value
+                ];
+            }
+
+            $usedKeys = [];
+
+            if ($constructor) {
+                $usedKeys = $this->mapArrayToConstructor($container, $definition, $constructor, $normalizedConfig, $reflectionClass, $contextEntry);
+            }
+            
+            // Map remaining keys to setters and public properties
+            $this->mapArrayToProperties($container, $definition, $reflectionClass, $normalizedConfig, $usedKeys, $contextEntry);
+
+            // Add validation if symfony/validator is available
+            if ($this->shouldValidate($container, $reflectionClass)) {
+                $this->addValidationConfigurator($container, $definition, $reflectionClass);
+            }
+        } finally {
+             unset($this->hydrationStack[$className]);
         }
     }
 
@@ -171,7 +216,7 @@ class MapConfigPass implements CompilerPassInterface
      * 
      * @return array List of configuration keys used for constructor injection
      */
-    private function mapArrayToConstructor(ContainerBuilder $container, Definition $definition, \ReflectionMethod $constructor, array $configArray, \ReflectionClass $reflectionClass, string $entry): array
+    private function mapArrayToConstructor(ContainerBuilder $container, Definition $definition, \ReflectionMethod $constructor, array $normalizedConfig, \ReflectionClass $reflectionClass, string $entry): array
     {
         $usedKeys = [];
 
@@ -183,33 +228,42 @@ class MapConfigPass implements CompilerPassInterface
                 continue;
             }
 
-            // Try to find the value in the config array
-            // First try exact match (snake_case parameter name)
-            if (\array_key_exists($parameterName, $configArray)) {
-                $value = $this->resolveValue($container, $configArray[$parameterName], $parameter, $entry . '.' . $parameterName);
-                $definition->setArgument('$'.$parameterName, $value);
-                $usedKeys[$parameterName] = true;
-            }
-            // Then try camelCase to snake_case conversion
-            elseif (\array_key_exists($snakeCaseName = $this->camelCaseToSnakeCase($parameterName), $configArray)) {
-                $value = $this->resolveValue($container, $configArray[$snakeCaseName], $parameter, $entry . '.' . $snakeCaseName);
-                $definition->setArgument('$'.$parameterName, $value);
-                $usedKeys[$snakeCaseName] = true;
-            }
-            // Check if parameter has default value
-            elseif ($parameter->isDefaultValueAvailable()) {
-                // Use default value if key doesn't exist in array
+            // O(1) lookup using normalized map
+            // $parameterName is expected to be camelCase in the class definition (standard PHP practice)
+            // If the class uses snake_case for properties, normalizeKey would have kept them as snake_case if they had no capitals?
+            // Wait, normalizeKey logic: lcfirst(str_replace(['_', '-'], '', ucwords($input, '_-')))
+            // 'some_param' -> 'Some_Param' -> 'SomeParam' -> 'someParam'.
+            // If the property is $some_param (snake case in PHP code):
+            // normalizeKey('some_param') -> 'someParam'.
+            // So if I lookup 'some_param' (the PHP variable name) in $normalizedConfig (keyed by 'someParam'), FAIL.
+            // I must normalize the PHP parameter name too.
+            
+            $normalizedParamName = $this->normalizeKey($parameterName);
+            
+            if (\array_key_exists($normalizedParamName, $normalizedConfig)) {
+                $match = $normalizedConfig[$normalizedParamName];
+                $originalKey = $match['originalKey'];
+                $value = $match['value'];
+                
+                $resolvedValue = $this->resolveValue($container, $value, $parameter, $entry . '.' . $originalKey);
+                $definition->setArgument('$'.$parameterName, $resolvedValue);
+                $usedKeys[$originalKey] = true;
                 continue;
-            } else {
-                // Required parameter is missing from config array
-                throw new InvalidArgumentException(sprintf(
-                    'Cannot resolve configuration parameter "$%s" for class "%s". Expected key "%s" not found in entry "%s".',
-                    $parameterName,
-                    $reflectionClass->getName(),
-                    $parameterName,
-                    $entry
-                ));
             }
+
+            // Check if parameter has default value
+            if ($parameter->isDefaultValueAvailable()) {
+                continue;
+            }
+
+            // Required parameter is missing from config array
+            throw new InvalidArgumentException(sprintf(
+                'Cannot resolve configuration parameter "$%s" for class "%s". Expected key "%s" (or snake/kebab case) not found in entry "%s".',
+                $parameterName,
+                $reflectionClass->getName(),
+                $parameterName,
+                $entry
+            ));
         }
 
         return $usedKeys;
@@ -218,15 +272,18 @@ class MapConfigPass implements CompilerPassInterface
     /**
      * Maps remaining array values to setters and public properties.
      */
-    private function mapArrayToProperties(ContainerBuilder $container, Definition $definition, \ReflectionClass $reflectionClass, array $configArray, array $usedKeys, string $contextEntry): void
+    private function mapArrayToProperties(ContainerBuilder $container, Definition $definition, \ReflectionClass $reflectionClass, array $normalizedConfig, array $usedKeys, string $contextEntry): void
     {
-        foreach ($configArray as $key => $value) {
-            if (isset($usedKeys[$key])) {
+        $extraKeys = [];
+
+        foreach ($normalizedConfig as $camelCaseKey => $info) {
+             $originalKey = $info['originalKey'];
+             $value = $info['value'];
+
+            if (isset($usedKeys[$originalKey])) {
                 continue;
             }
 
-            $camelCaseKey = $this->snakeCaseToCamelCase($key);
-            
             // 1. Try Setter (setProperty)
             $setterName = 'set' . ucfirst($camelCaseKey);
             if ($reflectionClass->hasMethod($setterName)) {
@@ -235,7 +292,7 @@ class MapConfigPass implements CompilerPassInterface
                     // Check if there is only one parameter
                     if ($method->getNumberOfParameters() === 1) {
                          $param = $method->getParameters()[0];
-                         $resolvedValue = $this->resolveValue($container, $value, $param, $contextEntry . '.' . $key);
+                         $resolvedValue = $this->resolveValue($container, $value, $param, $contextEntry . '.' . $originalKey);
                          $definition->addMethodCall($setterName, [$resolvedValue]);
                          continue;
                     }
@@ -243,20 +300,36 @@ class MapConfigPass implements CompilerPassInterface
             }
 
             // 2. Try Public Property
-            // Check exact name first (if key was already camelCase or if property is snake_case)
-            if ($reflectionClass->hasProperty($key) && $reflectionClass->getProperty($key)->isPublic()) {
-                $prop = $reflectionClass->getProperty($key);
-                $resolvedValue = $this->resolveValue($container, $value, $prop, $contextEntry . '.' . $key);
-                $definition->setProperty($key, $resolvedValue);
-                continue;
+            // Check exact name first (of the original key, e.g. if property is snake_case)
+            if ($reflectionClass->hasProperty($originalKey)) {
+                $prop = $reflectionClass->getProperty($originalKey);
+                if ($prop->isPublic() && !$prop->isReadOnly() && !($prop->isProtectedSet() || $prop->isPrivateSet())) {
+                    $resolvedValue = $this->resolveValue($container, $value, $prop, $contextEntry . '.' . $originalKey);
+                    $definition->setProperty($originalKey, $resolvedValue);
+                    continue;
+                }
             }
             // Check camelCase name
-            if ($reflectionClass->hasProperty($camelCaseKey) && $reflectionClass->getProperty($camelCaseKey)->isPublic()) {
+            if ($reflectionClass->hasProperty($camelCaseKey)) {
                 $prop = $reflectionClass->getProperty($camelCaseKey);
-                $resolvedValue = $this->resolveValue($container, $value, $prop, $contextEntry . '.' . $camelCaseKey);
-                $definition->setProperty($camelCaseKey, $resolvedValue);
-                continue;
+                if ($prop->isPublic() && !$prop->isReadOnly() && !($prop->isProtectedSet() || $prop->isPrivateSet())) {
+                    $resolvedValue = $this->resolveValue($container, $value, $prop, $contextEntry . '.' . $originalKey);
+                    $definition->setProperty($camelCaseKey, $resolvedValue);
+                    continue;
+                }
             }
+
+            // If we reached here, the key is unused
+            $extraKeys[] = $originalKey;
+        }
+
+        if (!empty($extraKeys)) {
+            throw new InvalidArgumentException(sprintf(
+                'Class "%s" has unrecognized configuration keys: "%s" in entry "%s". Verified that these keys match public properties or setter methods.',
+                $reflectionClass->getName(),
+                implode('", "', $extraKeys),
+                $contextEntry
+            ));
         }
     }
 
@@ -265,15 +338,30 @@ class MapConfigPass implements CompilerPassInterface
      */
     private function resolveValue(ContainerBuilder $container, mixed $value, \ReflectionParameter|\ReflectionProperty $target, string $contextEntry): mixed
     {
-        $type = $target->getType();
-        if (!$type instanceof \ReflectionNamedType || $type->isBuiltin()) {
-            return $value;
+        $className = null;
+
+        if ($this->typeResolver) {
+            try {
+                $type = $this->typeResolver->resolve($target);
+                if ($type instanceof ObjectType) {
+                    $className = $type->getClassName();
+                }
+            } catch (\Throwable $e) {
+                // Ignore TypeInfo exceptions and fall back to native reflection
+            }
         }
 
-        $className = $type->getName();
+        if (null === $className) {
+            $type = $target->getType();
+            if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
+                $className = $type->getName();
+            }
+        }
+
+
 
         // Handle Enums (PHP 8.1+)
-        if (enum_exists($className)) {
+        if ($className && enum_exists($className)) {
             $r = new \ReflectionEnum($className);
             if ($r->isBacked()) {
                 // Always use a factory definition for Enums to ensure correct runtime resolution
@@ -282,6 +370,45 @@ class MapConfigPass implements CompilerPassInterface
                 $def->setArguments([$value]);
                 return $def;
             }
+        }
+
+        // Handle DateTimeInterface
+        if (is_a($className, \DateTimeInterface::class, true)) {
+            return new Definition($className, [$value]);
+        }
+        
+        // Handle Collections (array of objects)
+        if ($this->typeResolver && \is_array($value)) {
+             try {
+                 $type = $this->typeResolver->resolve($target);
+                 if ($type instanceof \Symfony\Component\TypeInfo\Type\CollectionType) {
+                     $itemType = $type->getCollectionValueType();
+                     
+                     $itemClassName = null;
+                     if ($itemType instanceof ObjectType) {
+                         $itemClassName = $itemType->getClassName();
+                     } elseif ($itemType instanceof \Symfony\Component\TypeInfo\Type\UnionType) {
+                         foreach ($itemType->getTypes() as $subType) {
+                             if ($subType instanceof ObjectType) {
+                                 $itemClassName = $subType->getClassName();
+                                 break;
+                             }
+                         }
+                     }
+                     
+                     if ($itemClassName) {
+                         
+                         $result = [];
+                         foreach ($value as $k => $v) {
+                             $result[$k] = $this->resolveNestedObject($container, $v, $itemClassName, $contextEntry . "[$k]");
+                         }
+                         return $result;
+                     }
+                 }
+                 // Legacy or GenericType fallback might be needed in future version but CollectionType is the standard now in 7.2
+             } catch (\Throwable $e) {
+                 // Ignore
+             }
         }
 
         if (!\is_array($value)) {
@@ -293,11 +420,18 @@ class MapConfigPass implements CompilerPassInterface
         if (!class_exists($className) && !interface_exists($className, false)) {
             return $value;
         }
-
+        
+        return $this->resolveNestedObject($container, $value, $className, $contextEntry);
+    }
+    
+    private function resolveNestedObject(ContainerBuilder $container, array $value, string $className, string $contextEntry): Definition
+    {
         // Recursively hydrate the nested object
         $nestedClass = $container->getReflectionClass($className);
         if (!$nestedClass) {
-            return $value;
+            // Fallback definition? No, we need reflection to hydrate
+             $def = new Definition($className);
+             return $def;
         }
 
         $nestedDefinition = new Definition($className);
@@ -310,12 +444,13 @@ class MapConfigPass implements CompilerPassInterface
 
 
 
+
     /**
-     * Converts snake_case to camelCase.
+     * Converts properties to camelCase (supports snake_case and kebab-case).
      */
-    private function snakeCaseToCamelCase(string $input): string
+    private function normalizeKey(string $input): string
     {
-        return str_replace('_', '', lcfirst(ucwords($input, '_')));
+        return lcfirst(str_replace(['_', '-'], '', ucwords($input, '_-')));
     }
 
     /**

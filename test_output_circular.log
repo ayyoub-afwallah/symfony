@@ -1,0 +1,33 @@
+PHPUnit 12.4.4 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /root/contribution/symfony/phpunit.xml.dist
+
+[33;1mW[0m                                                                   1 / 1 (100%)
+
+Time: 00:00.025, Memory: 18.00 MB
+
+1 test triggered 1 PHP warning:
+
+1) /root/contribution/symfony/src/Symfony/Component/DependencyInjection/Compiler/MapConfigPass.php:39
+Undefined property: Symfony\Component\DependencyInjection\Compiler\MapConfigPass::$typeResolver
+
+Triggered by:
+
+* Symfony\Component\DependencyInjection\Tests\Compiler\MapConfigPassTest::testCircularReferenceThrowsException
+  /root/contribution/symfony/src/Symfony/Component/DependencyInjection/Tests/Compiler/MapConfigPassTest.php:489
+
+--
+
+1 test triggered 1 PHP deprecation:
+
+1) /root/contribution/symfony/src/Symfony/Component/DependencyInjection/Compiler/MapConfigPass.php:40
+Creation of dynamic property Symfony\Component\DependencyInjection\Compiler\MapConfigPass::$typeResolver is deprecated
+
+Triggered by:
+
+* Symfony\Component\DependencyInjection\Tests\Compiler\MapConfigPassTest::testCircularReferenceThrowsException
+  /root/contribution/symfony/src/Symfony/Component/DependencyInjection/Tests/Compiler/MapConfigPassTest.php:489
+
+[30;43mOK, but there were issues![0m
+[30;43mTests: 1[0m[30;43m, Assertions: 2[0m[30;43m, Warnings: 1[0m[30;43m, Deprecations: 1[0m[30;43m.[0m

@@ -1,0 +1,21 @@
+PHPUnit 12.4.4 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /root/contribution/symfony/phpunit.xml.dist
+
+...............[31;1mE[0m                                                  16 / 16 (100%)
+
+Time: 00:00.073, Memory: 20.00 MB
+
+There was 1 error:
+
+1) Symfony\Component\DependencyInjection\Tests\Compiler\MapConfigPassTest::testStrictConfigurationThrowsException
+Error: Call to undefined method Symfony\Component\DependencyInjection\Definition::addAttribute()
+
+/root/contribution/symfony/src/Symfony/Component/DependencyInjection/Tests/Compiler/MapConfigPassTest.php:464
+/root/contribution/symfony/.phpunit/phpunit-12-0/phpunit:104
+/root/contribution/symfony/vendor/symfony/phpunit-bridge/bin/simple-phpunit.php:459
+/root/contribution/symfony/vendor/symfony/phpunit-bridge/bin/simple-phpunit:13
+
+[37;41mERRORS![0m
+[37;41mTests: 16[0m[37;41m, Assertions: 50[0m[37;41m, Errors: 1[0m[37;41m.[0m

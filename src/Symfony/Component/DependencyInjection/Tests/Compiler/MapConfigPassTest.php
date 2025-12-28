@@ -361,4 +361,148 @@ class MapConfigPassTest extends TestCase
             throw $e;
         }
     }
+    public function testProcessWithKebabCaseToCamelCaseConversion()
+    {
+        $container = new ContainerBuilder();
+        
+        // Set parameters with kebab-case names
+        $container->setParameter('kebab_config', [
+            'app-key' => 'my-key',
+            'app-secret' => 'my-secret',
+        ]);
+        
+        $container->register(\Symfony\Component\DependencyInjection\Tests\Fixtures\KebabConfig::class, \Symfony\Component\DependencyInjection\Tests\Fixtures\KebabConfig::class)
+            ->addTag('di.map_config')
+            ->setPublic(true);
+        
+        $pass = new MapConfigPass();
+        $pass->process($container);
+        
+        $container->compile();
+        
+        // Verify arguments are mapped correctly
+        $config = $container->get(\Symfony\Component\DependencyInjection\Tests\Fixtures\KebabConfig::class);
+        
+        $this->assertSame('my-key', $config->appKey);
+        $this->assertSame('my-secret', $config->appSecret);
+    }
+    public function testProcessDateTime()
+    {
+        $container = new ContainerBuilder();
+        
+        $container->setParameter('datetime_config', [
+            'date' => '2023-01-01 10:00:00',
+            'legacy_date' => '2023-12-31 23:59:59',
+        ]);
+        
+        $container->register(\Symfony\Component\DependencyInjection\Tests\Fixtures\DateTimeConfig::class, \Symfony\Component\DependencyInjection\Tests\Fixtures\DateTimeConfig::class)
+            ->addTag('di.map_config')
+            ->setPublic(true);
+        
+        $pass = new MapConfigPass();
+        $pass->process($container);
+        
+        $container->compile();
+        
+        // Verify arguments are mapped correctly
+        $config = $container->get(\Symfony\Component\DependencyInjection\Tests\Fixtures\DateTimeConfig::class);
+        
+        $this->assertInstanceOf(\DateTimeImmutable::class, $config->date);
+        $this->assertEquals(new \DateTimeImmutable('2023-01-01 10:00:00'), $config->date);
+        
+        $this->assertInstanceOf(\DateTime::class, $config->legacyDate);
+        $this->assertEquals(new \DateTime('2023-12-31 23:59:59'), $config->legacyDate);
+    }
+    public function testProcessCollection()
+    {
+        $container = new ContainerBuilder();
+        
+        $container->setParameter('collection_config', [
+            'items' => [
+                [
+                    'sub_value' => 'Item 1',
+                    'count' => 10,
+                ],
+                [
+                    'sub_value' => 'Item 2',
+                    'count' => 20,
+                ],
+            ],
+        ]);
+        
+        $container->register(\Symfony\Component\DependencyInjection\Tests\Fixtures\CollectionConfig::class, \Symfony\Component\DependencyInjection\Tests\Fixtures\CollectionConfig::class)
+            ->addTag('di.map_config')
+            ->setPublic(true);
+        
+        $pass = new MapConfigPass();
+        $pass->process($container);
+        
+        $container->compile();
+        
+        $config = $container->get(\Symfony\Component\DependencyInjection\Tests\Fixtures\CollectionConfig::class);
+        
+        $this->assertCount(2, $config->items);
+        $this->assertInstanceOf(\Symfony\Component\DependencyInjection\Tests\Fixtures\SubConfig::class, $config->items[0]);
+        $this->assertSame('Item 1', $config->items[0]->subValue);
+        $this->assertSame(10, $config->items[0]->count);
+        
+        $this->assertInstanceOf(\Symfony\Component\DependencyInjection\Tests\Fixtures\SubConfig::class, $config->items[1]);
+        $this->assertSame('Item 2', $config->items[1]->subValue);
+        $this->assertSame(20, $config->items[1]->count);
+    }
+    public function testStrictConfigurationThrowsException()
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('app.strict_config', [
+            'region' => 'us-east-1',
+            'bucket' => 'my-bucket',
+            'unknown_key' => 'Should fail',
+        ]);
+
+        $container->register(\Symfony\Component\DependencyInjection\Tests\Fixtures\StrictConfig::class, \Symfony\Component\DependencyInjection\Tests\Fixtures\StrictConfig::class)
+            ->setPublic(true)
+            ->addTag('di.map_config');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Class "Symfony\Component\DependencyInjection\Tests\Fixtures\StrictConfig" has unrecognized configuration keys: "unknown_key" in entry "app.strict_config"');
+
+        $pass = new MapConfigPass();
+        $pass->process($container);
+    }
+    public function testReadOnlyPropertyThrowsException()
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('app.readonly_config', [
+            'read_only_prop' => 'Should fail',
+        ]);
+
+        $container->register(\Symfony\Component\DependencyInjection\Tests\Fixtures\ReadOnlyConfig::class, \Symfony\Component\DependencyInjection\Tests\Fixtures\ReadOnlyConfig::class)
+            ->setPublic(true)
+            ->addTag('di.map_config');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Class "Symfony\Component\DependencyInjection\Tests\Fixtures\ReadOnlyConfig" has unrecognized configuration keys: "read_only_prop" in entry "app.readonly_config"');
+
+        $pass = new MapConfigPass();
+        $pass->process($container);
+    }
+    public function testCircularReferenceThrowsException()
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('app.circular_a', [
+            'b' => [
+                 'a' => [], 
+            ]
+        ]);
+
+        $container->register(\Symfony\Component\DependencyInjection\Tests\Fixtures\CircularConfigA::class, \Symfony\Component\DependencyInjection\Tests\Fixtures\CircularConfigA::class)
+            ->setPublic(true)
+            ->addTag('di.map_config');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Circular reference detected for class "Symfony\Component\DependencyInjection\Tests\Fixtures\CircularConfigA" during MapConfig processing.');
+
+        $pass = new MapConfigPass();
+        $pass->process($container);
+    }
 }
