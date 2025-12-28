@@ -1,0 +1,17 @@
+syntax error, unexpected variable "$nestedClass", expecting "function"
+#0 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/vendor/composer/ClassLoader.php(427): {closure:Composer\Autoload\ClassLoader::initializeIncludeClosure():575}()
+#1 /root/contribution/symfony/src/Symfony/Component/ErrorHandler/DebugClassLoader.php(311): Composer\Autoload\ClassLoader->loadClass()
+#2 /root/contribution/symfony/src/Symfony/Component/DependencyInjection/Tests/Compiler/MapConfigPassTest.php(351): Symfony\Component\ErrorHandler\DebugClassLoader->loadClass()
+#3 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/Framework/TestCase.php(1617): Symfony\Component\DependencyInjection\Tests\Compiler\MapConfigPassTest->testProcessEnum()
+#4 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/Framework/TestCase.php(1223): PHPUnit\Framework\TestCase->runTest()
+#5 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/Framework/TestResult.php(729): PHPUnit\Framework\TestCase->runBare()
+#6 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/Framework/TestCase.php(973): PHPUnit\Framework\TestResult->run()
+#7 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/Framework/TestSuite.php(685): PHPUnit\Framework\TestCase->run()
+#8 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/TextUI/TestRunner.php(651): PHPUnit\Framework\TestSuite->run()
+#9 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/TextUI/Command.php(146): PHPUnit\TextUI\TestRunner->run()
+#10 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/src/TextUI/Command.php(99): PHPUnit\TextUI\Command->run()
+#11 /root/contribution/symfony/vendor/bin/.phpunit/phpunit-9.6-0/phpunit(22): PHPUnit\TextUI\Command::main()
+#12 /root/contribution/symfony/vendor/symfony/phpunit-bridge/bin/simple-phpunit.php(459): include('...')
+#13 /root/contribution/symfony/vendor/symfony/phpunit-bridge/bin/simple-phpunit(13): require('...')
+#14 /root/contribution/symfony/vendor/bin/simple-phpunit(119): include('...')
+#15 {main}

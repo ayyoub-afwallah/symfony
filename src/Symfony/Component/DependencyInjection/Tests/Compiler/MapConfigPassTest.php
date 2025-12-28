@@ -347,13 +347,18 @@ class MapConfigPassTest extends TestCase
             ->addTag('di.map_config')
             ->setPublic(true);
 
-        $pass = new MapConfigPass();
-        $pass->process($container);
+        try {
+            $pass = new MapConfigPass();
+            $pass->process($container);
 
-        $container->compile();
+            $container->compile();
 
-        $config = $container->get(EnumConfig::class);
-        $this->assertInstanceOf(EnumConfig::class, $config);
-        $this->assertSame(ModeEnum::DEV, $config->mode);
+            $config = $container->get(EnumConfig::class);
+            $this->assertInstanceOf(EnumConfig::class, $config);
+            $this->assertSame(ModeEnum::DEV, $config->mode);
+        } catch (\Throwable $e) {
+            file_put_contents(__DIR__.'/error.log', $e->getMessage() . "\n" . $e->getTraceAsString());
+            throw $e;
+        }
     }
 }
