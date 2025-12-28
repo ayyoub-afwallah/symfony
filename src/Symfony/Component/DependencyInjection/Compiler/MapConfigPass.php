@@ -68,28 +68,35 @@ class MapConfigPass implements CompilerPassInterface
         }
         $definition->setAutowired(true);
 
-        $constructor = $reflectionClass->getConstructor();
-        if (!$constructor) {
-            return;
-        }
-
         // Resolve the configuration entry (supports dot notation for nested params)
         $entry = $attribute->entry;
         $configArray = $this->resolveConfigEntry($container, $entry);
         
         if ($configArray !== null && \is_array($configArray)) {
-            // Map array keys to constructor parameters
-            $this->mapArrayToConstructor($container, $definition, $constructor, $configArray, $reflectionClass, $entry);
-            
-            // Add validation if symfony/validator is available
-            if ($this->shouldValidate($container, $reflectionClass)) {
-                $this->addValidationConfigurator($container, $definition, $reflectionClass);
-            }
+            $this->hydrateDefinition($container, $definition, $reflectionClass, $configArray, $entry);
             return;
         }
 
         // Fallback: Try to map flat parameters (e.g., "app.name", "app.env")
-        $this->mapFlatParametersToConstructor($container, $definition, $constructor, $reflectionClass, $entry);
+        $this->mapFlatParametersToConstructor($container, $definition, $reflectionClass->getConstructor(), $reflectionClass, $entry);
+
+        // Add validation if symfony/validator is available
+        if ($this->shouldValidate($container, $reflectionClass)) {
+            $this->addValidationConfigurator($container, $definition, $reflectionClass);
+        }
+    }
+
+    private function hydrateDefinition(ContainerBuilder $container, Definition $definition, \ReflectionClass $reflectionClass, array $configArray, string $contextEntry): void
+    {
+        $constructor = $reflectionClass->getConstructor();
+        $usedKeys = [];
+
+        if ($constructor) {
+            $usedKeys = $this->mapArrayToConstructor($container, $definition, $constructor, $configArray, $reflectionClass, $contextEntry);
+        }
+        
+        // Map remaining keys to setters and public properties
+        $this->mapArrayToProperties($container, $definition, $reflectionClass, $configArray, $usedKeys, $contextEntry);
 
         // Add validation if symfony/validator is available
         if ($this->shouldValidate($container, $reflectionClass)) {
@@ -161,9 +168,13 @@ class MapConfigPass implements CompilerPassInterface
 
     /**
      * Maps array values to constructor parameters.
+     * 
+     * @return array List of configuration keys used for constructor injection
      */
-    private function mapArrayToConstructor(ContainerBuilder $container, Definition $definition, \ReflectionMethod $constructor, array $configArray, \ReflectionClass $reflectionClass, string $entry): void
+    private function mapArrayToConstructor(ContainerBuilder $container, Definition $definition, \ReflectionMethod $constructor, array $configArray, \ReflectionClass $reflectionClass, string $entry): array
     {
+        $usedKeys = [];
+
         foreach ($constructor->getParameters() as $parameter) {
             $parameterName = $parameter->getName();
 
@@ -175,11 +186,15 @@ class MapConfigPass implements CompilerPassInterface
             // Try to find the value in the config array
             // First try exact match (snake_case parameter name)
             if (\array_key_exists($parameterName, $configArray)) {
-                $definition->setArgument('$'.$parameterName, $configArray[$parameterName]);
+                $value = $this->resolveValue($container, $configArray[$parameterName], $parameter, $entry . '.' . $parameterName);
+                $definition->setArgument('$'.$parameterName, $value);
+                $usedKeys[$parameterName] = true;
             }
             // Then try camelCase to snake_case conversion
             elseif (\array_key_exists($snakeCaseName = $this->camelCaseToSnakeCase($parameterName), $configArray)) {
-                $definition->setArgument('$'.$parameterName, $configArray[$snakeCaseName]);
+                $value = $this->resolveValue($container, $configArray[$snakeCaseName], $parameter, $entry . '.' . $snakeCaseName);
+                $definition->setArgument('$'.$parameterName, $value);
+                $usedKeys[$snakeCaseName] = true;
             }
             // Check if parameter has default value
             elseif ($parameter->isDefaultValueAvailable()) {
@@ -196,6 +211,118 @@ class MapConfigPass implements CompilerPassInterface
                 ));
             }
         }
+
+        return $usedKeys;
+    }
+
+    /**
+     * Maps remaining array values to setters and public properties.
+     */
+    private function mapArrayToProperties(ContainerBuilder $container, Definition $definition, \ReflectionClass $reflectionClass, array $configArray, array $usedKeys, string $contextEntry): void
+    {
+        foreach ($configArray as $key => $value) {
+            if (isset($usedKeys[$key])) {
+                continue;
+            }
+
+            $camelCaseKey = $this->snakeCaseToCamelCase($key);
+            
+            // 1. Try Setter (setProperty)
+            $setterName = 'set' . ucfirst($camelCaseKey);
+            if ($reflectionClass->hasMethod($setterName)) {
+                $method = $reflectionClass->getMethod($setterName);
+                if ($method->isPublic() && !$method->isStatic()) {
+                    // Check if there is only one parameter
+                    if ($method->getNumberOfParameters() === 1) {
+                         $param = $method->getParameters()[0];
+                         $resolvedValue = $this->resolveValue($container, $value, $param, $contextEntry . '.' . $key);
+                         $definition->addMethodCall($setterName, [$resolvedValue]);
+                         continue;
+                    }
+                }
+            }
+
+            // 2. Try Public Property
+            // Check exact name first (if key was already camelCase or if property is snake_case)
+            if ($reflectionClass->hasProperty($key) && $reflectionClass->getProperty($key)->isPublic()) {
+                $prop = $reflectionClass->getProperty($key);
+                $resolvedValue = $this->resolveValue($container, $value, $prop, $contextEntry . '.' . $key);
+                $definition->setProperty($key, $resolvedValue);
+                continue;
+            }
+            // Check camelCase name
+            if ($reflectionClass->hasProperty($camelCaseKey) && $reflectionClass->getProperty($camelCaseKey)->isPublic()) {
+                $prop = $reflectionClass->getProperty($camelCaseKey);
+                $resolvedValue = $this->resolveValue($container, $value, $prop, $contextEntry . '.' . $camelCaseKey);
+                $definition->setProperty($camelCaseKey, $resolvedValue);
+                continue;
+            }
+        }
+    }
+
+    /**
+     * Resolves a value, handling nested object hydration.
+     */
+    private function resolveValue(ContainerBuilder $container, mixed $value, \ReflectionParameter|\ReflectionProperty $target, string $contextEntry): mixed
+    {
+        if (!\is_array($value)) {
+            return $value;
+        }
+
+        $type = $target->getType();
+        if (!$type instanceof \ReflectionNamedType || $type->isBuiltin()) {
+            return $value;
+        }
+
+        $className = $type->getName();
+        if (!class_exists($className) && !interface_exists($className, false)) {
+            return $value;
+        }
+
+        // Handle Enums (PHP 8.1+)
+        if (enum_exists($className)) {
+            $r = new \ReflectionEnum($className);
+            if ($r->isBacked()) {
+                // Generate code to safely create the enum: Class::tryFrom($value)
+                // Since this runs at compile time, we need to return a Definition or value that resolves at runtime?
+                // Actually, if the value is static, we can try to resolve it now or emit PHP code.
+                // But container parameters are %param%, so we might need expressions.
+                // For simplicity in this iteration: assume static values or %params% that resolve to scalars.
+                // We'll wrap it in an Expression or simply cast it if we're sure.
+                
+                // Better approach: We can't easily execute ::tryFrom at compile time if $value is a parameter placehoder.
+                // We should assume strict validation or use an expression.
+                // For now, let's defer to the standard "constructor/setter" logic but pass the raw value? 
+                // No, PHP 8.1 needs the actual Enum instance.
+                
+                // Always use a factory definition for Enums to ensure correct runtime resolution
+                $def = new Definition($className);
+                $def->setFactory([$className, 'tryFrom']);
+                $def->setArguments([$value]);
+                return $def;
+            }
+        }
+
+        // Recursively hydrate the nested object
+        $nestedClass = $container->getReflectionClass($className);
+        if (!$nestedClass) {
+            return $value;
+        }
+
+        $nestedDefinition = new Definition($className);
+        $nestedDefinition->setAutowired(true);
+        
+        $this->hydrateDefinition($container, $nestedDefinition, $nestedClass, $value, $contextEntry);
+        
+        return $nestedDefinition;
+    }
+
+    /**
+     * Converts snake_case to camelCase.
+     */
+    private function snakeCaseToCamelCase(string $input): string
+    {
+        return str_replace('_', '', lcfirst(ucwords($input, '_')));
     }
 
     /**

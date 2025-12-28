@@ -18,8 +18,13 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Exception\RuntimeException;
 use Symfony\Component\DependencyInjection\Tests\Fixtures\DatabaseConfig;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\EnumConfig;
 use Symfony\Component\DependencyInjection\Tests\Fixtures\InvalidConfig;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\ModeEnum;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\NestedConfig;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\SetterConfig;
 use Symfony\Component\DependencyInjection\Tests\Fixtures\SimpleConfig;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\SubConfig;
 use Symfony\Component\Validator\Validation;
 
 class MapConfigPassTest extends TestCase
@@ -268,5 +273,87 @@ class MapConfigPassTest extends TestCase
         $definition = $container->getDefinition(SimpleConfig::class);
         $arguments = $definition->getArguments();
         $this->assertSame('%app.name%', $arguments['$name']);
+    }
+
+    public function testProcessWithSettersAndPublicProperties()
+    {
+        $container = new ContainerBuilder();
+
+        $container->setParameter('setter_config', [
+            'name' => 'Main',
+            'public_property' => 'PublicVal',
+            'setter_value' => 'SetterVal',
+        ]);
+
+        $container->register(SetterConfig::class, SetterConfig::class)
+            ->addTag('di.map_config')
+            ->setPublic(true);
+
+        $pass = new MapConfigPass();
+        $pass->process($container);
+
+        $container->compile();
+
+        $config = $container->get(SetterConfig::class);
+        $this->assertInstanceOf(SetterConfig::class, $config);
+        $this->assertSame('Main', $config->name);
+        $this->assertSame('PublicVal', $config->publicProperty);
+        $this->assertSame('SetterVal', $config->getSetterValue());
+    }
+
+    public function testProcessNestedObject()
+    {
+        $container = new ContainerBuilder();
+
+        $container->setParameter('nested_config', [
+            'name' => 'Parent',
+            'sub' => [
+                'sub_value' => 'Child',
+                'count' => 5,
+            ],
+        ]);
+
+        $container->register(NestedConfig::class, NestedConfig::class)
+            ->addTag('di.map_config')
+            ->setPublic(true);
+
+        // SubConfig is NOT registered as a service, it should be inlined
+        
+        $pass = new MapConfigPass();
+        $pass->process($container);
+
+        $container->compile();
+
+        $config = $container->get(NestedConfig::class);
+        $this->assertInstanceOf(NestedConfig::class, $config);
+        $this->assertSame('Parent', $config->name);
+        $this->assertSame('Child', $config->sub->subValue);
+        $this->assertSame(5, $config->sub->count);
+    }
+
+    public function testProcessEnum()
+    {
+        if (PHP_VERSION_ID < 80100) {
+            $this->markTestSkipped('Enums are supported only on PHP 8.1+');
+        }
+
+        $container = new ContainerBuilder();
+
+        $container->setParameter('enum_config', [
+            'mode' => 'dev',
+        ]);
+
+        $container->register(EnumConfig::class, EnumConfig::class)
+            ->addTag('di.map_config')
+            ->setPublic(true);
+
+        $pass = new MapConfigPass();
+        $pass->process($container);
+
+        $container->compile();
+
+        $config = $container->get(EnumConfig::class);
+        $this->assertInstanceOf(EnumConfig::class, $config);
+        $this->assertSame(ModeEnum::DEV, $config->mode);
     }
 }
