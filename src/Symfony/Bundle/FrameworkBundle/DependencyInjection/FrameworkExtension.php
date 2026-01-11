@@ -57,6 +57,7 @@ use Symfony\Component\Console\Messenger\RunCommandMessageHandler;
 use Symfony\Component\DependencyInjection\Alias;
 use Symfony\Component\DependencyInjection\Argument\IteratorArgument;
 use Symfony\Component\DependencyInjection\Argument\ServiceLocatorArgument;
+use Symfony\Component\DependencyInjection\Attribute\MapConfig;
 use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\Compiler\ServiceLocatorTagPass;
@@ -804,6 +805,9 @@ class FrameworkExtension extends Extension
                 'object' => $attribute->asObject,
                 'list' => $attribute->asList,
             ])->addTag('container.excluded', ['source' => 'because it\'s a streamable JSON']);
+        });
+        $container->registerAttributeForAutoconfiguration(MapConfig::class, static function (ChildDefinition $definition, MapConfig $attribute): void {
+            $definition->addTag('di.map_config');
         });
 
         if (!$container->getParameter('kernel.debug')) {
