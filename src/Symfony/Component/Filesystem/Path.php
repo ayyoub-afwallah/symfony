@@ -103,17 +103,19 @@ final class Path
     /**
      * Normalizes the given path.
      *
-     * During normalization, all slashes are replaced by forward slashes ("/").
+     * On Windows, all slashes are replaced by forward slashes ("/") during normalization.
+     * On Unix-like systems, backslashes are preserved as they are valid filename characters.
      * Contrary to {@link canonicalize()}, this method does not remove invalid
      * or dot path segments. Consequently, it is much more efficient and should
      * be used whenever the given path is known to be a valid, absolute system
      * path.
      *
-     * This method is able to deal with both UNIX and Windows paths.
+     * This method is able to deal with both UNIX and Windows paths on their
+     * respective platforms.
      */
     public static function normalize(string $path): string
     {
-        return str_replace('\\', '/', $path);
+        return '\\' === \DIRECTORY_SEPARATOR ? str_replace('\\', '/', $path) : $path;
     }
 
     /**

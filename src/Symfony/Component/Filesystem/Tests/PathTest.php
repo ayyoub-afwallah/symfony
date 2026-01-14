@@ -1052,8 +1052,38 @@ class PathTest extends TestCase
         $this->assertEquals('C:/users/webmozart', Path::getHomeDirectory());
     }
 
-    public function testNormalize()
+    public static function provideNormalizeTests(): \Generator
     {
-        $this->assertSame('C:/Foo/Bar/test', Path::normalize('C:\\Foo\\Bar/test'));
+        // [input, expectedOnWindows, expectedOnUnix]
+        // Basic backslash handling
+        yield ['foo\\bar', 'foo/bar', 'foo\\bar'];
+        yield ['foo\\\\bar', 'foo//bar', 'foo\\\\bar'];
+        yield ['C:\\Windows\\System32', 'C:/Windows/System32', 'C:\\Windows\\System32'];
+
+        // Mixed slashes
+        yield ['foo/bar\\baz', 'foo/bar/baz', 'foo/bar\\baz'];
+        yield ['C:\\Foo\\Bar/test', 'C:/Foo/Bar/test', 'C:\\Foo\\Bar/test'];
+
+        // Only forward slashes (no change on either platform)
+        yield ['foo/bar/baz', 'foo/bar/baz', 'foo/bar/baz'];
+        yield ['/unix/path', '/unix/path', '/unix/path'];
+
+        // Empty and edge cases
+        yield ['', '', ''];
+        yield ['/', '/', '/'];
+        yield ['\\', '/', '\\'];
+        yield ['\\\\', '//', '\\\\'];
+
+        // Real-world Unix case with backslash in filename
+        yield ['/tmp/file\\with\\backslash.txt', '/tmp/file/with/backslash.txt', '/tmp/file\\with\\backslash.txt'];
+    }
+
+    /**
+     * @dataProvider provideNormalizeTests
+     */
+    public function testNormalize(string $path, string $expectedWindows, string $expectedUnix)
+    {
+        $expected = '\\' === \DIRECTORY_SEPARATOR ? $expectedWindows : $expectedUnix;
+        $this->assertSame($expected, Path::normalize($path));
     }
 }
