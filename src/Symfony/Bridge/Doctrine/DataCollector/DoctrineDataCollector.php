@@ -144,6 +144,7 @@ class DoctrineDataCollector extends DataCollector
     {
         $query['explainable'] = true;
         $query['runnable'] = true;
+        $query['isPrimary'] ??= null;
         $query['params'] ??= [];
         if (!\is_array($query['params'])) {
             $query['params'] = [$query['params']];

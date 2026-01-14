@@ -27,6 +27,7 @@ class Query
 
     private ?float $start = null;
     private ?float $duration = null;
+    private ?bool $isPrimary = null;
 
     public function __construct(
         private readonly string $sql,
@@ -100,6 +101,16 @@ class Query
     public function getDuration(): ?float
     {
         return $this->duration;
+    }
+
+    public function setIsPrimary(?bool $isPrimary): void
+    {
+        $this->isPrimary = $isPrimary;
+    }
+
+    public function getIsPrimary(): ?bool
+    {
+        return $this->isPrimary;
     }
 
     public function __clone()

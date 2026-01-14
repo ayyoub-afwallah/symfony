@@ -32,6 +32,7 @@ final class Connection extends AbstractConnectionMiddleware
         private readonly DebugDataHolder $debugDataHolder,
         private readonly ?Stopwatch $stopwatch,
         private readonly string $connectionName,
+        private readonly ?bool $isPrimary = null,
     ) {
         parent::__construct($connection);
     }
@@ -49,7 +50,9 @@ final class Connection extends AbstractConnectionMiddleware
 
     public function query(string $sql): Result
     {
-        $this->debugDataHolder->addQuery($this->connectionName, $query = new Query($sql));
+        $query = new Query($sql);
+        $query->setIsPrimary($this->isPrimary);
+        $this->debugDataHolder->addQuery($this->connectionName, $query);
 
         $this->stopwatch?->start('doctrine', 'doctrine');
         $query->start();
@@ -64,7 +67,9 @@ final class Connection extends AbstractConnectionMiddleware
 
     public function exec(string $sql): int
     {
-        $this->debugDataHolder->addQuery($this->connectionName, $query = new Query($sql));
+        $query = new Query($sql);
+        $query->setIsPrimary($this->isPrimary);
+        $this->debugDataHolder->addQuery($this->connectionName, $query);
 
         $this->stopwatch?->start('doctrine', 'doctrine');
         $query->start();
@@ -81,7 +86,9 @@ final class Connection extends AbstractConnectionMiddleware
     {
         $query = null;
         if (1 === ++$this->nestingLevel) {
-            $this->debugDataHolder->addQuery($this->connectionName, $query = new Query('"START TRANSACTION"'));
+            $query = new Query('"START TRANSACTION"');
+            $query->setIsPrimary($this->isPrimary);
+            $this->debugDataHolder->addQuery($this->connectionName, $query);
         }
 
         $this->stopwatch?->start('doctrine', 'doctrine');
@@ -99,7 +106,9 @@ final class Connection extends AbstractConnectionMiddleware
     {
         $query = null;
         if (1 === $this->nestingLevel--) {
-            $this->debugDataHolder->addQuery($this->connectionName, $query = new Query('"COMMIT"'));
+            $query = new Query('"COMMIT"');
+            $query->setIsPrimary($this->isPrimary);
+            $this->debugDataHolder->addQuery($this->connectionName, $query);
         }
 
         $this->stopwatch?->start('doctrine', 'doctrine');
@@ -117,7 +126,9 @@ final class Connection extends AbstractConnectionMiddleware
     {
         $query = null;
         if (1 === $this->nestingLevel--) {
-            $this->debugDataHolder->addQuery($this->connectionName, $query = new Query('"ROLLBACK"'));
+            $query = new Query('"ROLLBACK"');
+            $query->setIsPrimary($this->isPrimary);
+            $this->debugDataHolder->addQuery($this->connectionName, $query);
         }
 
         $this->stopwatch?->start('doctrine', 'doctrine');
