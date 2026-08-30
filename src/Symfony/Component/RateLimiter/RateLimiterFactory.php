@@ -56,6 +56,16 @@ final class RateLimiterFactory implements RateLimiterFactoryInterface
         };
     }
 
+    /**
+     * @return array{id: string, policy: string, limit?: int, interval?: \DateInterval, rate?: Rate|null, anchor_at?: \DateTimeImmutable|null}
+     *
+     * @internal
+     */
+    public function getConfig(): array
+    {
+        return $this->config;
+    }
+
     private static function configureOptions(OptionsResolver $options): void
     {
         $intervalNormalizer = static function (Options $options, \DateInterval|string $interval): \DateInterval {
