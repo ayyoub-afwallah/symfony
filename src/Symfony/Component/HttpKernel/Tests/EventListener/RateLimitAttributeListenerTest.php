@@ -21,6 +21,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\Cache;
 use Symfony\Component\HttpKernel\Attribute\RateLimit;
 use Symfony\Component\HttpKernel\Controller\ArgumentResolver;
+use Symfony\Component\HttpKernel\Controller\ArgumentResolver\RateLimitValueResolver;
 use Symfony\Component\HttpKernel\Controller\ControllerResolver;
 use Symfony\Component\HttpKernel\Event\ControllerArgumentsEvent;
 use Symfony\Component\HttpKernel\Event\ControllerAttributeEvent;
@@ -332,7 +333,7 @@ class RateLimitAttributeListenerTest extends TestCase
     {
         $listener = $this->makeListener();
         $request = Request::create('/');
-        $request->attributes->set('_rate_limit', 'a route default');
+        $request->attributes->set('_rate_limit_exposed', 'a route default');
 
         $listener->onKernelControllerAttribute($this->makeEvent(new RateLimit('api', exposeHeaders: true), $request));
 
@@ -391,13 +392,16 @@ class RateLimitAttributeListenerTest extends TestCase
             KernelEvents::CONTROLLER_ARGUMENTS => [RateLimit::class => true],
         ]));
         $dispatcher->addSubscriber(new RateLimitAttributeListener($locator));
+        $dispatcher->addSubscriber($rateLimitResolver = new RateLimitValueResolver());
 
         if ($withErrorHandling) {
             // a non-error response makes handleThrowable() stamp the 429 and Retry-After itself
             $dispatcher->addSubscriber(new ErrorListener(static fn () => new Response('error')));
         }
 
-        return new HttpKernel($dispatcher, new ControllerResolver(), null, new ArgumentResolver());
+        $argumentResolver = new ArgumentResolver(null, [$rateLimitResolver, ...ArgumentResolver::getDefaultArgumentValueResolvers()]);
+
+        return new HttpKernel($dispatcher, new ControllerResolver(), null, $argumentResolver);
     }
 
     private function handleThrough(HttpKernel $kernel, object $controller): Response
@@ -759,6 +763,61 @@ class RateLimitAttributeListenerTest extends TestCase
         $listener = new RateLimitAttributeListener($locator);
         $listener->onKernelControllerAttribute($this->makeEvent(new RateLimit('api', methods: ['POST']), Request::create('/', 'GET')));
     }
+
+    public function testBindingLimiterReachesTheControllerThroughARealKernel()
+    {
+        $kernel = $this->makeRealKernel(['policy' => 'fixed_window', 'limit' => 5, 'interval' => '1 minute']);
+
+        $response = $this->handleThrough($kernel, new RateLimitArgumentController());
+
+        $this->assertSame('remaining=4', $response->getContent());
+    }
+
+    public function testBindingLimiterReachesTheControllerWithoutExposeHeadersThroughARealKernel()
+    {
+        $kernel = $this->makeRealKernel(['policy' => 'fixed_window', 'limit' => 5, 'interval' => '1 minute']);
+
+        $response = $this->handleThrough($kernel, new OptedOutRateLimitArgumentController());
+
+        $this->assertSame('remaining=4', $response->getContent(), '$exposeHeaders governs the headers, not the argument');
+        $this->assertFalse($response->headers->has('X-RateLimit-Limit'), 'and it still governs the headers');
+    }
+
+    public function testStackedLimitersGiveTheControllerTheTightestThroughARealKernel()
+    {
+        $kernel = $this->makeRealKernelWithLimiters([
+            'generous' => ['policy' => 'fixed_window', 'limit' => 100, 'interval' => '1 minute'],
+            'tight' => ['policy' => 'fixed_window', 'limit' => 5, 'interval' => '1 minute'],
+        ]);
+
+        $response = $this->handleThrough($kernel, new StackedRateLimitArgumentController());
+
+        $this->assertSame('remaining=4', $response->getContent());
+    }
+
+    public function testAnUnexposedTighterLimiterBindsTheControllerWhileTheHeadersKeepReportingTheExposedOne()
+    {
+        $kernel = $this->makeRealKernelWithLimiters([
+            'generous' => ['policy' => 'fixed_window', 'limit' => 100, 'interval' => '1 minute'],
+            'tight' => ['policy' => 'fixed_window', 'limit' => 5, 'interval' => '1 minute'],
+        ]);
+
+        $response = $this->handleThrough($kernel, new StackedUnexposedTightRateLimitArgumentController());
+
+        $this->assertSame('remaining=4', $response->getContent(), 'the argument gets the tighter, opted-out limiter');
+        $this->assertSame('100', $response->headers->get('X-RateLimit-Limit'), 'the headers are unchanged: only the exposed limiter is reported');
+        $this->assertSame('99', $response->headers->get('X-RateLimit-Remaining'));
+    }
+
+    public function testControllerArgumentIsNullWhenTheMethodFilterSkipsThroughARealKernel()
+    {
+        $kernel = $this->makeRealKernel(['policy' => 'fixed_window', 'limit' => 5, 'interval' => '1 minute']);
+
+        $request = Request::create('/', 'GET', server: ['REMOTE_ADDR' => '1.2.3.4']);
+        $request->attributes->set('_controller', new PostOnlyRateLimitArgumentController());
+
+        $this->assertSame('none', $kernel->handle($request)->getContent());
+    }
 }
 
 class RateLimitedController
@@ -842,5 +901,60 @@ class StackedTokenCostController
     public function __invoke(): Response
     {
         return new Response('ok');
+    }
+}
+
+abstract class RateLimitArgumentControllerCase
+{
+    public function __invoke(?RateLimitResult $rateLimit): Response
+    {
+        return new Response(null === $rateLimit ? 'none' : 'remaining='.$rateLimit->getRemainingTokens());
+    }
+}
+
+class RateLimitArgumentController extends RateLimitArgumentControllerCase
+{
+    #[RateLimit('api', exposeHeaders: true)]
+    public function __invoke(?RateLimitResult $rateLimit): Response
+    {
+        return parent::__invoke($rateLimit);
+    }
+}
+
+class OptedOutRateLimitArgumentController extends RateLimitArgumentControllerCase
+{
+    #[RateLimit('api')]
+    public function __invoke(?RateLimitResult $rateLimit): Response
+    {
+        return parent::__invoke($rateLimit);
+    }
+}
+
+class PostOnlyRateLimitArgumentController extends RateLimitArgumentControllerCase
+{
+    #[RateLimit('api', methods: ['POST'], exposeHeaders: true)]
+    public function __invoke(?RateLimitResult $rateLimit): Response
+    {
+        return parent::__invoke($rateLimit);
+    }
+}
+
+class StackedRateLimitArgumentController extends RateLimitArgumentControllerCase
+{
+    #[RateLimit('generous', key: 'k', exposeHeaders: true)]
+    #[RateLimit('tight', key: 'k', exposeHeaders: true)]
+    public function __invoke(?RateLimitResult $rateLimit): Response
+    {
+        return parent::__invoke($rateLimit);
+    }
+}
+
+class StackedUnexposedTightRateLimitArgumentController extends RateLimitArgumentControllerCase
+{
+    #[RateLimit('generous', key: 'k', exposeHeaders: true)]
+    #[RateLimit('tight', key: 'k', exposeHeaders: false)]
+    public function __invoke(?RateLimitResult $rateLimit): Response
+    {
+        return parent::__invoke($rateLimit);
     }
 }

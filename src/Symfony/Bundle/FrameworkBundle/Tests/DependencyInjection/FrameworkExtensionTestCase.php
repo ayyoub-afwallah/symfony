@@ -71,6 +71,7 @@ use Symfony\Component\HttpClient\ThrottlingHttpClient;
 use Symfony\Component\HttpFoundation\IpUtils;
 use Symfony\Component\HttpKernel\DependencyInjection\LoggerPass;
 use Symfony\Component\HttpKernel\EventListener\ProfilerListener;
+use Symfony\Component\HttpKernel\Controller\ArgumentResolver\RateLimitValueResolver;
 use Symfony\Component\HttpKernel\EventListener\RateLimitAttributeListener;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -1595,6 +1596,12 @@ abstract class FrameworkExtensionTestCase extends TestCase
         $definition = $container->getDefinition('rate_limiter.attribute_listener');
         $this->assertSame(RateLimitAttributeListener::class, $definition->getClass());
         $this->assertTrue($definition->hasTag('kernel.event_subscriber'));
+
+        $this->assertTrue($container->hasDefinition('argument_resolver.rate_limit'));
+        $resolver = $container->getDefinition('argument_resolver.rate_limit');
+        $this->assertSame(RateLimitValueResolver::class, $resolver->getClass());
+        $this->assertSame([['priority' => 100, 'name' => RateLimitValueResolver::class]], $resolver->getTag('controller.argument_value_resolver'));
+        $this->assertTrue($resolver->hasTag('kernel.event_subscriber'));
     }
 
     /**

@@ -12,6 +12,7 @@
 namespace Symfony\Component\HttpKernel\EventListener;
 
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\RateLimit;
 use Symfony\Component\HttpKernel\Event\ControllerArgumentsEvent;
 use Symfony\Component\HttpKernel\Event\ControllerAttributeEvent;
@@ -31,6 +32,17 @@ use Symfony\Contracts\Service\ServiceProviderInterface;
  */
 final class RateLimitAttributeListener implements EventSubscriberInterface
 {
+    /**
+     * The limiter exposed to the client: the most restrictive one that exposes its state.
+     */
+    private const RATE_LIMIT_EXPOSED = '_rate_limit_exposed';
+
+    /**
+     * The limiter that binds the request: the most restrictive one, exposed or not.
+     *
+     * Read by RateLimitValueResolver under the same literal key. It holds an @internal
+     * AppliedRateLimit, so nothing outside the component can rely on it.
+     */
     private const RATE_LIMIT_ATTRIBUTE = '_rate_limit';
 
     /**
@@ -70,7 +82,7 @@ final class RateLimitAttributeListener implements EventSubscriberInterface
             : null;
 
         if (!$rateLimit->isAccepted()) {
-            $request->attributes->set(self::RATE_LIMIT_ATTRIBUTE, $candidate);
+            $request->attributes->set(self::RATE_LIMIT_EXPOSED, $candidate);
 
             if ($dispatcher && class_exists(RateLimitExceededEvent::class)) {
                 $dispatcher->dispatch(new RateLimitExceededEvent($rateLimit, $attribute->limiter, $key));
@@ -80,13 +92,10 @@ final class RateLimitAttributeListener implements EventSubscriberInterface
         }
 
         if ($candidate) {
-            /** @var AppliedRateLimit|null $applied */
-            $applied = $request->attributes->get(self::RATE_LIMIT_ATTRIBUTE);
-
-            if (!$applied instanceof AppliedRateLimit || $candidate->getRemainingCalls() < $applied->getRemainingCalls()) {
-                $request->attributes->set(self::RATE_LIMIT_ATTRIBUTE, $candidate);
-            }
+            $this->keepMostRestrictive($request, self::RATE_LIMIT_EXPOSED, $candidate);
         }
+
+        $this->keepMostRestrictive($request, self::RATE_LIMIT_ATTRIBUTE, $candidate ?? new AppliedRateLimit($rateLimit, $attribute->tokens));
     }
 
     /**
@@ -94,7 +103,7 @@ final class RateLimitAttributeListener implements EventSubscriberInterface
      */
     public function onKernelResponse(ResponseEvent $event): void
     {
-        $applied = $event->getRequest()->attributes->get(self::RATE_LIMIT_ATTRIBUTE);
+        $applied = $event->getRequest()->attributes->get(self::RATE_LIMIT_EXPOSED);
 
         if (!$event->isMainRequest() || !$applied instanceof AppliedRateLimit) {
             return;
@@ -124,5 +133,18 @@ final class RateLimitAttributeListener implements EventSubscriberInterface
             KernelEvents::CONTROLLER_ARGUMENTS.'.'.RateLimit::class => 'onKernelControllerAttribute',
             KernelEvents::RESPONSE => 'onKernelResponse',
         ];
+    }
+
+    /**
+     * Stores $candidate under $key when it is closer to rejecting than the one already there.
+     */
+    private function keepMostRestrictive(Request $request, string $key, AppliedRateLimit $candidate): void
+    {
+        /** @var AppliedRateLimit|null $applied */
+        $applied = $request->attributes->get($key);
+
+        if (!$applied instanceof AppliedRateLimit || $candidate->getRemainingCalls() < $applied->getRemainingCalls()) {
+            $request->attributes->set($key, $candidate);
+        }
     }
 }

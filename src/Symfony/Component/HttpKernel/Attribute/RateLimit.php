@@ -20,6 +20,10 @@ use Symfony\Component\ExpressionLanguage\Expression;
  * rejecting, out of those with $exposeHeaders enabled. A rejecting limiter always wins; when it
  * does not expose its state, the response carries no `X-RateLimit-*` headers at all.
  *
+ * A nullable `Symfony\Component\RateLimiter\RateLimit` controller argument receives the limiter
+ * closest to rejecting out of all of them, whether or not it exposes its state, so it can describe
+ * a different limiter than the headers do.
+ *
  * @see https://symfony.com/doc/current/rate_limiter.html
  *
  * @author Ayyoub AFW-ALLAH <ayyoub.afwallah@gmail.com>
