@@ -35,6 +35,7 @@ use Symfony\Component\HttpKernel\HttpCache\Store;
 use Symfony\Component\HttpKernel\HttpKernel;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\HttpKernel\RateLimiter\AppliedRateLimit;
 use Symfony\Component\HttpKernel\Tests\HttpCache\HttpCacheTestCase;
 use Symfony\Component\RateLimiter\Event\RateLimitExceededEvent;
 use Symfony\Component\RateLimiter\LimiterInterface;
@@ -332,14 +333,14 @@ class RateLimitAttributeListenerTest extends TestCase
     {
         $listener = $this->makeListener();
         $request = Request::create('/');
-        $request->attributes->set('_rate_limit', 'a route default');
+        $request->attributes->set(RateLimitAttributeListener::REQUEST_ATTRIBUTE, 'a route default');
 
         $listener->onKernelControllerAttribute($this->makeEvent(new RateLimit('api', exposeHeaders: true), $request));
 
         $response = new Response();
         $listener->onKernelResponse($this->makeResponseEvent($request, $response));
 
-        // the route default is replaced, not dereferenced
+        $this->assertContainsOnlyInstancesOf(AppliedRateLimit::class, $request->attributes->get(RateLimitAttributeListener::REQUEST_ATTRIBUTE));
         $this->assertSame('5', $response->headers->get('X-RateLimit-Limit'));
         $this->assertSame('4', $response->headers->get('X-RateLimit-Remaining'));
     }
