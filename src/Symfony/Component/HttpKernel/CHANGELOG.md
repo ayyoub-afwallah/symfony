@@ -10,6 +10,7 @@ CHANGELOG
  * Add the `$expiration` argument to `FragmentUriGenerator::__construct()` and sign fragment URIs with a 5-year expiration by default
  * Add `hasDump()` method to `Profile` to track profiles with dump
  * Dispatch `RateLimitExceededEvent` from `RateLimitAttributeListener` when the `#[RateLimit]` attribute rejects a request
+ * Inject applied rate limits into `RateLimit` controller arguments and add `#[MapRateLimit]` for filtering
  * Seed the query bag from the `_query` route default when a route is matched
  * Deserialize the query parameter named by `#[MapQueryString(key:)]` as JSON when it holds a string, e.g. `?filter={"page":1}`
  * Prefix the property path to each violation message reported by `RequestPayloadValueResolver`

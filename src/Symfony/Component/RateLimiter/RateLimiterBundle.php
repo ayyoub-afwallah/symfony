@@ -21,6 +21,7 @@ use Symfony\Component\DependencyInjection\Kernel\RequiredBundle;
 use Symfony\Component\DependencyInjection\Kernel\ServicesBundle;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\HttpKernel\Controller\ArgumentResolver\MapRateLimitValueResolver;
 use Symfony\Component\HttpKernel\EventListener\RateLimitAttributeListener;
 use Symfony\Component\Lock\LockInterface;
 use Symfony\Component\RateLimiter\DependencyInjection\DefaultLockFactoryPass;
@@ -180,6 +181,10 @@ class RateLimiterBundle extends AbstractBundle
 
         if (!class_exists(RateLimitAttributeListener::class)) {
             $container->removeDefinition('rate_limiter.attribute_listener');
+        }
+
+        if (!class_exists(MapRateLimitValueResolver::class)) {
+            $container->removeDefinition('argument_resolver.map_rate_limit');
         }
 
         $limiters = [];

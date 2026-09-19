@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 
+use Symfony\Component\HttpKernel\Controller\ArgumentResolver\MapRateLimitValueResolver;
 use Symfony\Component\HttpKernel\EventListener\RateLimitAttributeListener;
 use Symfony\Component\RateLimiter\RateLimiterBuilder;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
@@ -33,6 +34,10 @@ return static function (ContainerConfigurator $container) {
         ->set('rate_limiter.attribute_listener', RateLimitAttributeListener::class)
             ->tag('kernel.event_subscriber')
             ->args([tagged_locator('rate_limiter', 'name')])
+
+        ->set('argument_resolver.map_rate_limit', MapRateLimitValueResolver::class)
+            ->tag('controller.argument_value_resolver', ['priority' => 100, 'name' => MapRateLimitValueResolver::class])
+            ->tag('kernel.event_subscriber')
 
         ->set('limiter_builder', RateLimiterBuilder::class)
             ->args([
