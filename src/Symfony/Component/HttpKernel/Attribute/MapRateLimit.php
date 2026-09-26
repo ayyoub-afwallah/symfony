@@ -27,13 +27,13 @@ final class MapRateLimit extends ValueResolver
     public ArgumentMetadata $metadata;
 
     /**
-     * @param bool|null                                  $exposed  Filter by exposeHeaders; null includes both exposed and hidden results
-     * @param string|null                                $limiter  The configured limiter name; null includes every limiter
+     * @param string|null                                 $limiter  The configured limiter name; null includes every limiter
+     * @param bool|null                                   $exposed  Filter by exposeHeaders; null includes both exposed and hidden results
      * @param class-string<ValueResolverInterface>|string $resolver The name of the resolver to use
      */
     public function __construct(
-        public readonly ?bool $exposed = null,
         public readonly ?string $limiter = null,
+        public readonly ?bool $exposed = null,
         string $resolver = MapRateLimitValueResolver::class,
     ) {
         parent::__construct($resolver);
