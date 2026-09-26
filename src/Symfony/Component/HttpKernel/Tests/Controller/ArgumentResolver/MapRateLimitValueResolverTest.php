@@ -61,6 +61,20 @@ class MapRateLimitValueResolverTest extends TestCase
         }
     }
 
+    public function testExplicitMappingRejectsUntypedAndUnionArguments()
+    {
+        $resolver = new MapRateLimitValueResolver();
+
+        foreach ([null, RateLimit::class.'|string'] as $type) {
+            try {
+                $resolver->resolve(Request::create('/'), new ArgumentMetadata('limit', $type, false, false, null, false, [new MapRateLimit()]));
+                $this->fail('Expected a LogicException for the unsupported argument type.');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('must be typed as', $e->getMessage());
+            }
+        }
+    }
+
     public function testMissingRateLimitUsesDefaultOrNullAndRejectsRequiredArgument()
     {
         $resolver = new MapRateLimitValueResolver();
@@ -143,7 +157,7 @@ class MapRateLimitValueResolverTest extends TestCase
     public function testMapsNoLimitRateLimitWithoutResetTime()
     {
         $request = Request::create('/');
-        $unlimited = $this->applied(new RateLimit(PHP_INT_MAX, new \DateTimeImmutable('+1 minute'), true, PHP_INT_MAX), 'unlimited', true);
+        $unlimited = $this->applied(new RateLimit(\PHP_INT_MAX, new \DateTimeImmutable('+1 minute'), true, \PHP_INT_MAX), 'unlimited', true);
         $request->attributes->set(RateLimitAttributeListener::RATE_LIMIT_ATTRIBUTE, [$unlimited]);
         $event = new ControllerArgumentsEvent($this->createStub(HttpKernelInterface::class), static fn () => null, [new MapRateLimit(), new MapRateLimit(exposed: true)], $request, null);
 
@@ -152,6 +166,34 @@ class MapRateLimitValueResolverTest extends TestCase
         $this->assertSame($unlimited->rateLimit, $event->getArguments()[0]);
         $this->assertSame($unlimited->rateLimit, $event->getArguments()[1]);
         $this->assertNull($unlimited->rateLimit->getResetAt());
+    }
+
+    public function testFilteringByNameAndExposureRequiresBothToMatch()
+    {
+        $request = Request::create('/');
+        $namedHidden = $this->applied(new RateLimit(1, new \DateTimeImmutable('+1 minute'), true, 10), 'api', false);
+        $otherExposed = $this->applied(new RateLimit(2, new \DateTimeImmutable('+1 minute'), true, 10), 'other', true);
+        $request->attributes->set(RateLimitAttributeListener::RATE_LIMIT_ATTRIBUTE, [$namedHidden, $otherExposed]);
+        $mapping = (new MapRateLimitValueResolver())->resolve($request, new ArgumentMetadata('limit', RateLimit::class, false, false, null, true, [new MapRateLimit(limiter: 'api', exposed: true)]))[0];
+        $event = new ControllerArgumentsEvent($this->createStub(HttpKernelInterface::class), static fn () => null, [$mapping], $request, null);
+
+        (new MapRateLimitValueResolver())->onKernelControllerArguments($event);
+
+        $this->assertSame([null], $event->getArguments());
+    }
+
+    public function testRepeatedNamedLimiterSelectsTheTighterApplication()
+    {
+        $request = Request::create('/');
+        $looser = $this->applied(new RateLimit(8, new \DateTimeImmutable('+1 minute'), true, 10), 'api', true);
+        $tighter = $this->applied(new RateLimit(2, new \DateTimeImmutable('+1 minute'), true, 10), 'api', true);
+        $request->attributes->set(RateLimitAttributeListener::RATE_LIMIT_ATTRIBUTE, [$looser, $tighter]);
+        $mapping = new MapRateLimit(limiter: 'api');
+        $event = new ControllerArgumentsEvent($this->createStub(HttpKernelInterface::class), static fn () => null, [$mapping, $mapping], $request, null);
+
+        (new MapRateLimitValueResolver())->onKernelControllerArguments($event);
+
+        $this->assertSame([$tighter->rateLimit, $tighter->rateLimit], $event->getArguments());
     }
 
     public function testMapsRateLimitThroughARealKernelDispatch()

@@ -1,0 +1,99 @@
+implicit:
+    path: /implicit
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\ImplicitRateLimitController
+
+filtered:
+    path: /filtered
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\FilteredRateLimitController
+
+limited:
+    path: /limited
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\LimitedRateLimitController
+
+unlimited:
+    path: /unlimited
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\UnlimitedRateLimitController
+
+nullable:
+    path: /nullable
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\NullableRateLimitController
+
+nullable_match:
+    path: /nullable-match
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\NullableMatchingRateLimitController
+
+required:
+    path: /required
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\RequiredRateLimitController
+
+method:
+    path: /method
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\MethodRateLimitController
+
+head:
+    path: /head
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\HeadRateLimitController
+
+hidden_rejection:
+    path: /hidden-rejection
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\HiddenRejectingRateLimitController
+
+subrequest:
+    path: /subrequest
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\FilteredRateLimitController
+
+sliding:
+    path: /sliding
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\SlidingRateLimitController
+
+bucket:
+    path: /bucket
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\BucketRateLimitController
+
+combined:
+    path: /combined
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\CombinedRateLimitController
+
+default:
+    path: /default
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\DefaultRateLimitController
+
+default_match:
+    path: /default-match
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\DefaultMatchingRateLimitController
+
+composed:
+    path: /composed
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\ComposedRateLimitController
+
+custom_resolver:
+    path: /custom-resolver
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\CustomResolverRateLimitController
+
+missing_resolver:
+    path: /missing-resolver
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\MissingResolverRateLimitController
+
+class_and_method:
+    path: /class-and-method
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\ClassAndMethodRateLimitController
+
+unlimited_with_bounded:
+    path: /unlimited-with-bounded
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\UnlimitedWithBoundedRateLimitController
+
+token_cost:
+    path: /token-cost
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\TokenCostMappingController
+
+token_cost_reversed:
+    path: /token-cost-reversed
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\ReversedTokenCostMappingController
+
+warm_limiter:
+    path: /warm-limiter
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\WarmRateLimitController
+
+repeated_limiter:
+    path: /repeated-limiter
+    controller: Symfony\Bundle\FrameworkBundle\Tests\Functional\RepeatedRateLimitController
