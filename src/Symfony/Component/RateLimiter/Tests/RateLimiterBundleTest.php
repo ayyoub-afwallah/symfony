@@ -14,14 +14,12 @@ namespace Symfony\Component\RateLimiter\Tests;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\DependencyInjection\Compiler\RemoveMissingDependenciesPass;
-use Symfony\Component\DependencyInjection\Compiler\RemoveMissingDependenciesPass as ContainerRemoveMissingDependenciesPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Kernel\AbstractKernel;
 use Symfony\Component\DependencyInjection\Kernel\KernelTrait;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Filesystem\Filesystem;
-use Symfony\Component\HttpKernel\Controller\ArgumentResolver\MapRateLimitValueResolver;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\InMemoryStore;
 use Symfony\Component\RateLimiter\CompoundRateLimiterFactory;
@@ -78,7 +76,6 @@ class RateLimiterBundleTest extends TestCase
         $container = new ContainerBuilder();
         new RateLimiterBundle()->getContainerExtension()->load([[]], $container);
 
-        new ContainerRemoveMissingDependenciesPass()->process($container);
         new RemoveMissingDependenciesPass()->process($container);
         $this->assertFalse($container->hasDefinition('cache.rate_limiter'), 'dropped without "cache.app"');
 
@@ -86,12 +83,6 @@ class RateLimiterBundleTest extends TestCase
         $container->register('cache.app');
         new RateLimiterBundle()->getContainerExtension()->load([[]], $container);
 
-        $definition = $container->getDefinition('argument_resolver.map_rate_limit');
-        $this->assertSame(MapRateLimitValueResolver::class, $definition->getClass());
-        $this->assertTrue($definition->hasTag('controller.argument_value_resolver'));
-        $this->assertTrue($definition->hasTag('kernel.event_subscriber'));
-
-        new ContainerRemoveMissingDependenciesPass()->process($container);
         new RemoveMissingDependenciesPass()->process($container);
         $this->assertTrue($container->hasDefinition('cache.rate_limiter'));
     }

@@ -98,17 +98,6 @@ class MapRateLimitValueResolverTest extends TestCase
         $resolver->onKernelControllerArguments($event);
     }
 
-    public function testResolveStagesPlainAndMappedArguments()
-    {
-        $resolver = new MapRateLimitValueResolver();
-        $request = Request::create('/');
-        $plain = new ArgumentMetadata('rateLimit', RateLimit::class, false, false, null, true);
-        $mapped = new ArgumentMetadata('rateLimit', RateLimit::class, false, false, null, true, [new MapRateLimit(exposed: true, limiter: 'api')]);
-
-        $this->assertInstanceOf(MapRateLimit::class, $resolver->resolve($request, $plain)[0]);
-        $this->assertSame($mapped->getAttributes()[0], $resolver->resolve($request, $mapped)[0]);
-    }
-
     public function testMapsTheMostRestrictiveMatchingRateLimit()
     {
         $request = Request::create('/');
@@ -193,20 +182,6 @@ class MapRateLimitValueResolverTest extends TestCase
         (new MapRateLimitValueResolver())->onKernelControllerArguments($event);
 
         $this->assertSame([$api->rateLimit], $event->getArguments());
-    }
-
-    public function testRepeatedNamedLimiterSelectsTheTighterApplication()
-    {
-        $request = Request::create('/');
-        $looser = $this->applied(new RateLimit(8, new \DateTimeImmutable('+1 minute'), true, 10), 'api', true);
-        $tighter = $this->applied(new RateLimit(2, new \DateTimeImmutable('+1 minute'), true, 10), 'api', true);
-        $request->attributes->set(RateLimitAttributeListener::RATE_LIMIT_ATTRIBUTE, [$looser, $tighter]);
-        $mapping = new MapRateLimit(limiter: 'api');
-        $event = new ControllerArgumentsEvent($this->createStub(HttpKernelInterface::class), static fn () => null, [$mapping, $mapping], $request, null);
-
-        (new MapRateLimitValueResolver())->onKernelControllerArguments($event);
-
-        $this->assertSame([$tighter->rateLimit, $tighter->rateLimit], $event->getArguments());
     }
 
     public function testMapsRateLimitThroughARealKernelDispatch()

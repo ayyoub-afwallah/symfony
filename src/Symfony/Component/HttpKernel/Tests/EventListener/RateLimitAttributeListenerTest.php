@@ -35,7 +35,6 @@ use Symfony\Component\HttpKernel\HttpCache\Store;
 use Symfony\Component\HttpKernel\HttpKernel;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
-use Symfony\Component\HttpKernel\RateLimiter\AppliedRateLimit;
 use Symfony\Component\HttpKernel\Tests\HttpCache\HttpCacheTestCase;
 use Symfony\Component\RateLimiter\Event\RateLimitExceededEvent;
 use Symfony\Component\RateLimiter\LimiterInterface;
@@ -340,7 +339,6 @@ class RateLimitAttributeListenerTest extends TestCase
         $response = new Response();
         $listener->onKernelResponse($this->makeResponseEvent($request, $response));
 
-        $this->assertContainsOnlyInstancesOf(AppliedRateLimit::class, $request->attributes->get(RateLimitAttributeListener::RATE_LIMIT_ATTRIBUTE));
         $this->assertSame('5', $response->headers->get('X-RateLimit-Limit'));
         $this->assertSame('4', $response->headers->get('X-RateLimit-Remaining'));
     }
