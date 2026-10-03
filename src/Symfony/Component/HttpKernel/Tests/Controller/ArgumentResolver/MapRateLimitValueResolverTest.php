@@ -47,18 +47,33 @@ class MapRateLimitValueResolverTest extends TestCase
         $resolver->resolve($request, new ArgumentMetadata('id', 'int', false, false, null, false, [new MapRateLimit()]));
     }
 
-    public function testResolveAcceptsRequiredButNotVariadicRateLimit()
+    public function testResolveAcceptsRequiredButNotMappedVariadicRateLimit()
     {
         $resolver = new MapRateLimitValueResolver();
 
         $this->assertInstanceOf(MapRateLimit::class, $resolver->resolve(Request::create('/'), new ArgumentMetadata('rateLimit', RateLimit::class, false, false, null))[0]);
 
         try {
-            $resolver->resolve(Request::create('/'), new ArgumentMetadata('rateLimit', RateLimit::class, true, false, null, true));
+            $resolver->resolve(Request::create('/'), new ArgumentMetadata('rateLimit', RateLimit::class, true, false, null, true, [new MapRateLimit()]));
             $this->fail('Expected a LogicException for a variadic argument.');
         } catch (\LogicException $e) {
             $this->assertStringContainsString('must not be variadic', $e->getMessage());
         }
+    }
+
+    public function testUnmappedVariadicRateLimitsUseRequestAttributes()
+    {
+        $request = Request::create('/');
+        $first = new RateLimit(4, new \DateTimeImmutable('+1 minute'), true, 5);
+        $second = new RateLimit(2, new \DateTimeImmutable('+1 minute'), true, 5);
+        $request->attributes->set('limits', [$first, $second]);
+
+        $controller = static fn (RateLimit ...$limits): int => \count($limits);
+        $resolver = new ArgumentResolver(null, [new MapRateLimitValueResolver(), ...ArgumentResolver::getDefaultArgumentValueResolvers()]);
+        $arguments = $resolver->getArguments($request, $controller);
+
+        $this->assertSame([$first, $second], $arguments);
+        $this->assertSame(2, $controller(...$arguments));
     }
 
     public function testExplicitMappingRejectsUntypedAndUnionArguments()
@@ -133,7 +148,7 @@ class MapRateLimitValueResolverTest extends TestCase
     public function testMapsByRemainingCallsRatherThanRemainingTokens()
     {
         $request = Request::create('/');
-        $cheap = $this->applied(new RateLimit(99, new \DateTimeImmutable('+1 minute'), true, 100), 'cheap', false);
+        $cheap = $this->applied(new RateLimit(20, new \DateTimeImmutable('+1 minute'), true, 100), 'cheap', false);
         $expensive = $this->applied(new RateLimit(90, new \DateTimeImmutable('+1 minute'), true, 100), 'expensive', false, 10);
         $request->attributes->set(RateLimitAttributeListener::RATE_LIMIT_ATTRIBUTE, [$cheap, $expensive]);
         $event = new ControllerArgumentsEvent($this->createStub(HttpKernelInterface::class), static fn () => null, [new MapRateLimit()], $request, null);

@@ -42,6 +42,10 @@ final class MapRateLimitValueResolver implements ValueResolverInterface, EventSu
         }
 
         if ($argument->isVariadic()) {
+            if (!$attribute) {
+                return [];
+            }
+
             throw new \LogicException(\sprintf('The "$%s" argument of "%s" must not be variadic.', $argument->getName(), $argument->getControllerName()));
         }
 
