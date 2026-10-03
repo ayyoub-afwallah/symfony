@@ -10,7 +10,6 @@ CHANGELOG
  * Add the `$expiration` argument to `FragmentUriGenerator::__construct()` and sign fragment URIs with a 5-year expiration by default
  * Add `hasDump()` method to `Profile` to track profiles with dump
  * Dispatch `RateLimitExceededEvent` from `RateLimitAttributeListener` when the `#[RateLimit]` attribute rejects a request
- * Inject applied rate limits into `RateLimit` controller arguments and add `#[MapRateLimit]` for filtering
  * Seed the query bag from the `_query` route default when a route is matched
  * Deserialize the query parameter named by `#[MapQueryString(key:)]` as JSON when it holds a string, e.g. `?filter={"page":1}`
  * Prefix the property path to each violation message reported by `RequestPayloadValueResolver`
@@ -21,6 +20,7 @@ CHANGELOG
  * Make `#[MapRequestPayload]` deserialize any media type carrying a structured syntax suffix with the encoder of the suffix format, e.g. `application/vnd.api+json` with the `json` encoder
  * Add the `$exposeHeaders` argument to `#[RateLimit]`
  * Instantiate on demand the bundles that have nothing to do when the kernel boots
+ * Inject applied rate limits into `RateLimit` controller arguments and add `#[MapRateLimit]` for filtering
 
 8.1
 ---
