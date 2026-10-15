@@ -4,125 +4,70 @@
     {{ parent() }}
 
     <style>
-        .rate-limiter-table {
-            table-layout: fixed;
-        }
-        .rate-limiter-table td {
-            overflow-wrap: anywhere;
-            vertical-align: top;
-        }
-        .rate-limiter-table td .label,
-        .rate-limiter-table td code,
-        .rate-limiter-name,
-        .rate-limiter-when {
-            white-space: nowrap;
-        }
-        .rate-limiter-table abbr.rate-limiter-meta {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .rate-limiter-table th {
-            white-space: nowrap;
-        }
-        .rate-limiter-table .col-id { width: 5.5em; }
-        .rate-limiter-table .col-limiter { width: 24%; }
-        .rate-limiter-table .col-key { width: 5%; }
-        .rate-limiter-table .col-call { width: 10%; }
-        .rate-limiter-table .col-result { width: 12%; }
-        .rate-limiter-table .col-tokens { width: 15%; }
-        .rate-limiter-table .col-when { width: 13%; }
-        .rate-limiter-table .col-time { width: 8%; }
-        .rate-limiter-table .col-wrap { white-space: normal; word-break: break-word; }
-        .rate-limiter-table tr.rate-limiter-child td { background: var(--table-row-even-background, transparent); }
-        .rate-limiter-table tr.rate-limiter-rejected td { background: var(--status-error-background, rgba(176, 65, 62, .08)); }
-        .rate-limiter-meta {
-            display: block;
-            color: var(--color-muted);
-            font-size: 12px;
-        }
-        .rate-limiter-table .label.status-neutral,
-        .rate-limiter-section h3 .label.status-neutral {
-            color: var(--badge-color);
-        }
-        .rate-limiter-problem {
-            color: var(--color-error);
-            font-weight: bold;
-        }
-        .rate-limiter-bar {
-            background: var(--base-2);
-            border-radius: 3px;
-            height: 5px;
-            margin-top: 4px;
-            overflow: hidden;
-            width: 120px;
-        }
-        .rate-limiter-bar span {
-            display: block;
-            height: 100%;
-        }
+        .rate-limiter-title { align-items: baseline; display: flex; gap: .75em; }
+        .rate-limiter-title small { color: var(--color-muted); font-size: var(--font-size-body); font-weight: normal; }
+        .metric .value.rate-limiter-warning { color: var(--color-warning); }
+        .metric .value.rate-limiter-error { color: var(--color-error); }
+
+        .rate-limiter-tabs { position: relative; }
+        .rate-limiter-filter { position: absolute; right: 0; top: 6px; }
+
+        .rate-limiter-table { table-layout: fixed; }
+        .rate-limiter-table th { white-space: nowrap; }
+        .rate-limiter-table td { font-family: var(--font-family-system); overflow-wrap: anywhere; vertical-align: middle; }
+        .rate-limiter-table code, .rate-limiter-mono { font-family: var(--font-family-monospace); font-size: 13px; }
+        .rate-limiter-table .col-id { width: 5em; }
+        .rate-limiter-table .col-call { width: 13%; }
+        .rate-limiter-table .col-result { width: 13%; }
+        .rate-limiter-table .col-tokens { width: 14%; }
+        .rate-limiter-table .col-when { width: 11%; }
+        .rate-limiter-table .col-time { width: 7%; }
+        .rate-limiter-table .text-right { text-align: right; }
+
+        .rate-limiter-key { color: var(--color-muted); display: block; font-size: 12px; }
+        .rate-limiter-problem td { background: var(--status-warning-background, rgba(255, 196, 0, .08)); }
+        .rate-limiter-failed td { background: var(--status-error-background, rgba(176, 65, 62, .08)); }
+        .rate-limiter-sub td { background: var(--table-row-even-background, transparent); }
+
+        .rate-limiter-quiet { align-items: center; color: var(--color-muted); display: inline-flex; gap: 6px; white-space: nowrap; }
+        .rate-limiter-quiet::before { background: var(--color-muted); border-radius: 50%; content: ''; height: 7px; width: 7px; }
+        .rate-limiter-quiet.dot-success::before { background: var(--color-success); }
+        .rate-limiter-quiet.dot-info::before { background: var(--color-link); }
+        .rate-limiter-table .label { white-space: nowrap; }
+
+        .rate-limiter-tokens { align-items: center; display: inline-flex; gap: 8px; white-space: nowrap; }
+        .rate-limiter-tokens.is-problem { color: var(--color-error); font-weight: bold; }
+        .rate-limiter-bar { background: var(--base-2); border-radius: 2px; height: 4px; overflow: hidden; width: 48px; }
+        .rate-limiter-bar span { display: block; height: 100%; }
         .rate-limiter-bar .bar-ok { background: var(--color-success); }
         .rate-limiter-bar .bar-low { background: var(--color-warning); }
         .rate-limiter-bar .bar-empty { background: var(--color-error); }
-        .rate-limiter-toggle {
-            background: none;
-            border: 1px solid var(--table-border-color);
-            border-radius: 4px;
-            color: inherit;
-            cursor: pointer;
-            height: 22px;
-            line-height: 1;
-            margin-right: 4px;
-            padding: 0;
-            width: 22px;
-        }
+
+        .rate-limiter-toggle { background: none; border: 0; border-radius: 4px; color: var(--color-muted); cursor: pointer; height: 22px; padding: 0; vertical-align: middle; width: 22px; }
+        .rate-limiter-toggle:hover { background: var(--base-2); }
+        .rate-limiter-toggle svg { transition: transform .1s; }
         .rate-limiter-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
-        .rate-limiter-decided {
-            border: 1px solid var(--color-error);
-            border-radius: 4px;
-            color: var(--color-error);
-            font-size: 11px;
-            font-weight: bold;
-            margin-left: 4px;
-            padding: 0 4px;
-        }
-        .rate-limiter-summary {
-            border: 1px solid var(--table-border-color);
-            border-radius: 6px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: .5em 2em;
-            margin: 0 0 1em;
-            padding: .75em 1em;
-        }
-        .rate-limiter-filters {
-            margin: 1em 0;
-        }
-        .rate-limiter-section {
-            margin-top: 1.5em;
-        }
-        .rate-limiter-section h3 {
-            align-items: baseline;
-            display: flex;
-            flex-wrap: wrap;
-            gap: .5em;
-            margin-bottom: .5em;
-        }
-        .rate-limiter-section h3 .rate-limiter-counts {
-            font-size: var(--font-size-body);
-            font-weight: normal;
-            margin-left: auto;
-        }
+        .rate-limiter-details td { padding-left: 6.5em; }
+        .rate-limiter-facts { display: flex; flex-wrap: wrap; gap: .25em 2em; }
+        .rate-limiter-facts dt { color: var(--color-muted); display: inline; margin-right: .4em; }
+        .rate-limiter-facts dd { display: inline; margin: 0; }
+
+        .rate-limiter-section { margin-top: 1.5em; }
+        .rate-limiter-section h3 { align-items: baseline; display: flex; flex-wrap: wrap; gap: .25em .75em; margin-bottom: .5em; }
+        .rate-limiter-section h3 .rate-limiter-mono { font-size: 15px; font-weight: bold; }
+        .rate-limiter-section .rate-limiter-key-row { color: var(--color-muted); font-size: 12px; font-weight: normal; }
+        .rate-limiter-section h3 small { color: var(--color-muted); font-size: 13px; font-weight: normal; }
+        .rate-limiter-section h3 .rate-limiter-problems { color: var(--color-error); font-size: 13px; margin-left: auto; }
     </style>
 {% endblock %}
 
 {% block toolbar %}
     {% if collector.topLevelCount > 0 %}
+        {% set problems = collector.rejectedCount + collector.errorCount %}
         {% set status_color = collector.errorCount ? 'red' : collector.rejectedCount ? 'yellow' : '' %}
-        {% set tightest = collector.tightest %}
         {% set icon %}
             {{ source('@WebProfiler/Icon/time.svg') }}
-            <span class="sf-toolbar-value">{{ collector.topLevelCount }}</span>
+            <span class="sf-toolbar-value">{{ problems ? problems ~ ' / ' ~ collector.topLevelCount : collector.topLevelCount }}</span>
         {% endset %}
         {% set text %}
             <div class="sf-toolbar-info-piece">
@@ -137,12 +82,10 @@
                 <b>Failed</b>
                 <span class="sf-toolbar-status {{ collector.errorCount ? 'sf-toolbar-status-red' }}">{{ collector.errorCount }}</span>
             </div>
-            {% if tightest %}
-                <div class="sf-toolbar-info-piece">
-                    <b>Tightest</b>
-                    <span>{{ tightest.limiter }} {{ tightest.remaining }}/{{ tightest.limit }}</span>
-                </div>
-            {% endif %}
+            <div class="sf-toolbar-info-piece">
+                <b>Time</b>
+                <span>{{ '%.1f'|format(collector.totalDuration * 1000) }} ms</span>
+            </div>
         {% endset %}
         {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', {link: profiler_url, status: status_color}) }}
     {% endif %}
@@ -158,107 +101,114 @@
     </span>
 {% endblock %}
 
-{% macro relative_time(timestamp, from) %}
-    {%- set seconds = timestamp - from -%}
-    <span title="{{ timestamp|round(0, 'floor')|date('Y-m-d H:i:s') }}">
-        {%- if seconds < 0.05 -%}now
-        {%- elseif seconds < 10 -%}in {{ seconds|round(1, 'ceil') }} s
-        {%- elseif seconds < 60 -%}in {{ seconds|round(0, 'ceil') }} s
-        {%- elseif seconds < 3600 -%}in {{ (seconds / 60)|round(0, 'ceil') }} min
-        {%- else -%}in {{ (seconds / 3600)|round(1) }} h
-        {%- endif -%}
-    </span>
+{% macro relative(seconds) %}
+    {%- if seconds < 0.05 -%}now
+    {%- elseif seconds < 10 -%}{{ seconds|round(1, 'ceil') }} s
+    {%- elseif seconds < 60 -%}{{ seconds|round(0, 'ceil') }} s
+    {%- elseif seconds < 3600 -%}{{ (seconds / 60)|round(0, 'ceil') }} min
+    {%- else -%}{{ (seconds / 3600)|round(1) }} h
+    {%- endif -%}
+{% endmacro %}
+
+{% macro call(operation) %}
+    {%- if operation.operation == 'reset' %}reset(){% else %}{{ operation.operation }}({{ operation.tokens }}){% endif -%}
 {% endmacro %}
 
 {% macro result(operation) %}
-    {%- if operation.exception -%}
-        {%- set result, status = 'failed', 'error' -%}
-    {%- elseif operation.operation == 'reset' -%}
-        {%- set result, status = 'reset', 'neutral' -%}
-    {%- elseif operation.operation == 'consume' and operation.tokens == 0 -%}
-        {%- set result, status = 'checked', 'neutral' -%}
-    {%- elseif operation.unlimited -%}
-        {%- set result, status = 'unlimited', 'success' -%}
-    {%- elseif operation.operation == 'reserve' -%}
-        {%- set result, status = 'reserved', 'success' -%}
+    {%- if operation.failed -%}
+        <span class="label status-error">failed</span>
     {%- elseif operation.rejected -%}
-        {%- set result, status = 'rejected', 'warning' -%}
+        <span class="label status-warning">rejected</span>
+    {%- elseif operation.operation == 'reset' -%}
+        <span class="rate-limiter-quiet">reset</span>
+    {%- elseif operation.operation == 'consume' and operation.tokens == 0 -%}
+        <span class="rate-limiter-quiet">checked</span>
+    {%- elseif operation.unlimited -%}
+        <span class="rate-limiter-quiet dot-success">unlimited</span>
+    {%- elseif operation.operation == 'reserve' -%}
+        <span class="rate-limiter-quiet dot-info">reserved</span>
     {%- elseif operation.accepted -%}
-        {%- set result, status = 'accepted', 'success' -%}
+        <span class="rate-limiter-quiet dot-success">accepted</span>
     {%- else -%}
-        {%- set result, status = 'unknown', 'neutral' -%}
+        <span class="rate-limiter-quiet">unknown</span>
     {%- endif -%}
-    <span class="label status-{{ status }}">{{ result }}</span>
-    {%- if operation.exception %}<abbr class="rate-limiter-meta" title="{{ operation.exception }}">{{ operation.exception|split('\\')|last }}</abbr>{% endif -%}
 {% endmacro %}
 
 {% macro tokens(operation) %}
-    {%- if operation.exception or operation.operation == 'reset' -%}
+    {%- if operation.unlimited -%}
+        <span class="rate-limiter-tokens rate-limiter-mono">∞</span>
+    {%- elseif operation.failed or operation.operation == 'reset' or operation.remaining is null -%}
         <span class="text-muted">—</span>
-    {%- elseif operation.unlimited -%}
-        no limit
-    {%- elseif operation.rejected and operation.remaining is not null -%}
-        <span class="rate-limiter-problem">needed {{ operation.tokens }}, had {{ operation.remaining }}</span>
-    {%- elseif operation.remaining is not null -%}
-        {{ operation.remaining }} / {{ operation.limit }} left
     {%- else -%}
-        <span class="text-muted">—</span>
-    {%- endif -%}
-    {%- if not operation.exception and not operation.unlimited and operation.operation != 'reset' and operation.remaining is not null and operation.limit -%}
-        {%- set percent = (operation.remaining / operation.limit * 100)|round -%}
-        <div class="rate-limiter-bar" aria-hidden="true"><span class="{{ percent == 0 ? 'bar-empty' : percent <= 34 ? 'bar-low' : 'bar-ok' }}" style="width: {{ percent }}%"></span></div>
+        {%- set percent = operation.limit ? (operation.remaining / operation.limit * 100)|round : 0 -%}
+        <span class="rate-limiter-tokens {{ operation.problem ? 'is-problem' }}">
+            <span class="rate-limiter-mono">{{ operation.remaining }}/{{ operation.limit }}</span>
+            <span class="rate-limiter-bar" aria-hidden="true"><span class="{{ percent == 0 ? 'bar-empty' : percent <= 34 ? 'bar-low' : 'bar-ok' }}" style="width: {{ percent }}%"></span></span>
+        </span>
     {%- endif -%}
 {% endmacro %}
 
-{% macro timing(operation) %}
+{% macro when(operation) %}
     {%- import _self as helper -%}
-    <span class="rate-limiter-when">
     {%- if operation.timeToAct is not null -%}
-        acts {{ helper.relative_time(operation.timeToAct, operation.time) }}
+        {{ helper.relative(operation.timeToAct - operation.time) == 'now' ? 'now' : 'in ' ~ helper.relative(operation.timeToAct - operation.time) }}
     {%- elseif operation.rejected and operation.retryAfter is not null -%}
-        retry {{ helper.relative_time(operation.retryAfter, operation.time) }}
-    {%- elseif operation.resetAt is not null -%}
-        resets {{ helper.relative_time(operation.resetAt, operation.time) }}
+        retry {{ helper.relative(operation.retryAfter - operation.time) }}
+    {%- elseif operation.resetAt is not null and not operation.failed -%}
+        {{ helper.relative(operation.resetAt - operation.time) }}
     {%- else -%}
         <span class="text-muted">—</span>
     {%- endif -%}
-    </span>
 {% endmacro %}
 
-{% macro timeline_rows(operation, ancestors, top_problem, depth) %}
+{% macro facts(operation) %}
+    {%- set facts = [] -%}
+    {%- if operation.rejected and operation.remaining is not null -%}
+        {%- set facts = facts|merge([['Reason', 'needed ' ~ operation.tokens ~ ', ' ~ operation.remaining ~ ' left']]) -%}
+    {%- endif -%}
+    {%- if operation.decidedBy -%}
+        {%- set facts = facts|merge([['Decided by', operation.decidedBy]]) -%}
+    {%- endif -%}
+    {%- if operation.timeToAct is not null -%}
+        {%- set facts = facts|merge([['Acts at', operation.timeToAct|round(0, 'floor')|date('H:i:s')]]) -%}
+    {%- elseif operation.rejected and operation.retryAfter is not null -%}
+        {%- set facts = facts|merge([['Retry at', operation.retryAfter|date('H:i:s')]]) -%}
+    {%- elseif operation.resetAt is not null and not operation.failed -%}
+        {%- set facts = facts|merge([['Resets at', operation.resetAt|date('H:i:s')]]) -%}
+    {%- endif -%}
+    {%- if operation.settings -%}
+        {%- set facts = facts|merge([['Limit', operation.settings]]) -%}
+    {%- endif -%}
+    {%- if facts -%}
+        <dl class="rate-limiter-facts">
+            {%- for fact in facts -%}
+                <div><dt>{{ fact[0] }}</dt><dd class="rate-limiter-mono">{{ fact[1] }}</dd></div>
+            {%- endfor -%}
+        </dl>
+    {%- endif -%}
+{% endmacro %}
+
+{% macro sub_rows(operation, top, depth) %}
     {%- import _self as helper -%}
-    {% set expanded = operation.problem %}
-    <tr data-op="{{ operation.id }}" data-ancestors="{{ ancestors|join(' ') }}" data-top-problem="{{ top_problem ? 1 : 0 }}"
-        class="{{ depth > 0 ? 'rate-limiter-child' }} {{ operation.problem ? 'rate-limiter-rejected' }}" id="rate-limiter-call-{{ operation.id }}">
-        <td class="nowrap-cell">
-            {% if operation.children %}
-                <button type="button" class="rate-limiter-toggle" data-toggle-op="{{ operation.id }}" data-expanded="{{ expanded ? 1 : 0 }}" aria-expanded="{{ expanded ? 'true' : 'false' }}" aria-label="Show the calls made by call {{ operation.id }}">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
-                </button>
-            {% endif %}
-            <span class="text-muted">{{ operation.id }}</span>
-        </td>
-        <td class="col-wrap" style="padding-left: {{ 0.6 + depth * 1.4 }}em">
-            <span class="rate-limiter-name">{% if depth > 0 %}<span class="text-muted" aria-hidden="true">└</span> {% endif %}<strong>{{ operation.limiter }}</strong>
-            {%- if operation.decides %}<span class="rate-limiter-decided">decided</span>{% endif %}</span>
-            {% if operation.decidedBy %}<span class="rate-limiter-meta">decided by {{ operation.decidedBy }}</span>{% endif %}
-        </td>
-        <td>{{ depth > 0 ? '' : operation.key }}</td>
-        <td><code>{{ operation.operation == 'reset' ? 'reset()' : operation.operation ~ '(' ~ operation.tokens ~ ')' }}</code></td>
-        <td>{{ helper.result(operation) }}</td>
-        <td>{{ helper.tokens(operation) }}</td>
-        <td>{{ helper.timing(operation) }}</td>
-        <td class="text-muted text-right">{{ '%.2f'|format(operation.duration * 1000) }} ms</td>
-    </tr>
     {% for child in operation.children %}
-        {{ helper.timeline_rows(child, ancestors|merge([operation.id]), top_problem, depth + 1) }}
+        <tr data-row-of="{{ top }}" data-problem="{{ child.problem ? 1 : 0 }}" class="rate-limiter-sub {{ child.failed ? 'rate-limiter-failed' : child.rejected ? 'rate-limiter-problem' }}">
+            <td class="text-muted rate-limiter-mono">{{ child.id }}</td>
+            <td style="padding-left: {{ 0.5 + depth * 1.25 }}em"><span class="text-muted" aria-hidden="true">└</span> <strong>{{ child.limiter }}</strong></td>
+            <td><code>{{ helper.call(child) }}</code></td>
+            <td>{{ helper.result(child) }}</td>
+            <td>{{ helper.tokens(child) }}</td>
+            <td>{{ helper.when(child) }}</td>
+            <td class="text-muted text-right rate-limiter-mono">{{ '%.2f'|format(child.duration * 1000) }}</td>
+        </tr>
+        {{ helper.sub_rows(child, top, depth + 1) }}
     {% endfor %}
 {% endmacro %}
 
 {% block panel %}
     {% import _self as helper %}
 
-    <h2>Rate Limiter</h2>
+    {% set limiters = collector.limiters %}
+    <h2 class="rate-limiter-title">Rate Limiter{% if limiters %} <small>{{ limiters|length }} {{ limiters|length == 1 ? 'limiter' : 'limiters' }}</small>{% endif %}</h2>
 
     {% if collector.operations is empty %}
         <div class="empty empty-panel">
@@ -266,133 +216,131 @@
             <p class="text-muted text-small">Limiters created outside the container or used outside of this request are not traced.</p>
         </div>
     {% else %}
-        {% set limiters = collector.limiters %}
-        {% set tightest = collector.tightest %}
-
         <div class="metrics">
             <div class="metric">
-                <span class="value">{{ limiters|length }}</span>
-                <span class="label">Limiters</span>
-            </div>
-            <div class="metric">
                 <span class="value">{{ collector.topLevelCount }}</span>
-                <span class="label">Calls{% if collector.childCount %} <span class="text-muted">+ {{ collector.childCount }} inside compounds</span>{% endif %}</span>
+                <span class="label">Calls</span>
             </div>
             <div class="metric">
-                <span class="value">{{ collector.rejectedCount }}</span>
+                <span class="value {{ collector.rejectedCount ? 'rate-limiter-warning' }}">{{ collector.rejectedCount }}</span>
                 <span class="label">Rejected</span>
             </div>
             <div class="metric">
-                <span class="value">{{ collector.errorCount }}</span>
+                <span class="value {{ collector.errorCount ? 'rate-limiter-error' }}">{{ collector.errorCount }}</span>
                 <span class="label">Failed</span>
             </div>
             <div class="metric">
-                <span class="value">{{ '%.2f'|format(collector.totalDuration * 1000) }} <span class="unit">ms</span></span>
-                <span class="label">Total time</span>
+                <span class="value">{{ '%.1f'|format(collector.totalDuration * 1000) }} <span class="unit">ms</span></span>
+                <span class="label">Time</span>
             </div>
         </div>
 
-        <div class="rate-limiter-summary">
-            {% if tightest %}
-                <span>Tightest limiter: <strong>{{ tightest.limiter }}</strong> · key {{ tightest.key }} · <strong class="{{ tightest.remaining == 0 ? 'rate-limiter-problem' }}">{{ tightest.remaining }} / {{ tightest.limit }} left</strong></span>
-            {% endif %}
-            <span class="text-muted">One call is one operation made by your code; calls a compound limiter makes on its limiters are nested under it.</span>
-        </div>
+        <div class="rate-limiter-tabs">
+            <label class="rate-limiter-filter"><input type="checkbox" id="rate-limiter-problem-filter"> Problems only</label>
 
-        <div class="rate-limiter-filters">
-            <label><input type="checkbox" id="rate-limiter-problem-filter"> Only rejected or failed calls</label>
-        </div>
-
-        <div class="sf-tabs" id="rate-limiter-tabs">
-            <div class="tab">
-                <h3 class="tab-title">Timeline <span class="badge">{{ collector.topLevelCount }}</span></h3>
-                <div class="tab-content">
-                    <table class="rate-limiter-table" id="rate-limiter-timeline">
-                        <thead>
-                            <tr>
-                                <th class="col-id">#</th>
-                                <th class="col-limiter">Limiter</th>
-                                <th class="col-key">Key</th>
-                                <th class="col-call">Call</th>
-                                <th class="col-result">Result</th>
-                                <th class="col-tokens">Tokens</th>
-                                <th class="col-when">Resets / retry</th>
-                                <th class="col-time text-right">Time</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for operation in collector.timeline %}
-                                {{ helper.timeline_rows(operation, [], operation.problem, 0) }}
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="tab">
-                <h3 class="tab-title">By limiter <span class="badge">{{ limiters|length }}</span></h3>
-                <div class="tab-content">
-                    {% for limiter in limiters %}
-                        {% set policy = limiter.policy ?? 'custom' %}
-                        <div class="rate-limiter-section">
-                            <h3>
-                                {{ limiter.name }}
-                                <span class="label status-neutral">{{ policy }}</span>
-                                {% if limiter.settings %}
-                                    <span class="text-muted text-small">{{ limiter.settings }}</span>
-                                {% elseif limiter.children %}
-                                    <span class="text-muted text-small">{{ limiter.children|join(' + ') }}</span>
-                                {% endif %}
-                                <span class="rate-limiter-counts text-muted">
-                                    {{ limiter.calls }} {{ limiter.calls == 1 ? 'call' : 'calls' }}
-                                    {%- if limiter.rejected or limiter.errors %} · {{ limiter.rejected + limiter.errors }} rejected or failed{% endif %}
-                                </span>
-                            </h3>
-
-                            <table class="rate-limiter-table">
-                                <thead>
-                                    <tr>
-                                        <th class="col-id">#</th>
-                                        <th>Call</th>
-                                        <th class="col-result">Result</th>
-                                        <th class="col-tokens">Tokens</th>
-                                        <th>Resets / retry</th>
-                                        <th class="col-time text-right">Time</th>
+            <div class="sf-tabs" id="rate-limiter-tabs">
+                <div class="tab">
+                    <h3 class="tab-title">Timeline</h3>
+                    <div class="tab-content">
+                        <table class="rate-limiter-table" id="rate-limiter-timeline">
+                            <thead>
+                                <tr>
+                                    <th class="col-id">#</th>
+                                    <th>Limiter</th>
+                                    <th class="col-call">Call</th>
+                                    <th class="col-result">Result</th>
+                                    <th class="col-tokens">Tokens</th>
+                                    <th class="col-when">Resets</th>
+                                    <th class="col-time text-right">ms</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for operation in collector.timeline %}
+                                    {% set details = helper.facts(operation)|trim %}
+                                    {% set expandable = details or operation.children %}
+                                    <tr data-top="{{ operation.id }}" data-problem="{{ operation.problem ? 1 : 0 }}" id="rate-limiter-call-{{ operation.id }}" class="{{ operation.failed ? 'rate-limiter-failed' : operation.rejected ? 'rate-limiter-problem' }}">
+                                        <td style="white-space: nowrap">
+                                            {%- if expandable -%}
+                                                <button type="button" class="rate-limiter-toggle" data-toggle="{{ operation.id }}" data-expanded="{{ operation.problem and operation.children ? 1 : 0 }}" aria-expanded="false" aria-label="Show details of call {{ operation.id }}">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                                                </button>
+                                            {%- else -%}
+                                                <span style="display: inline-block; width: 22px"></span>
+                                            {%- endif %}
+                                            <span class="text-muted rate-limiter-mono">{{ operation.id }}</span>
+                                        </td>
+                                        <td>
+                                            <strong>{{ operation.limiter }}</strong>
+                                            {% if operation.key is not null %}<span class="rate-limiter-key rate-limiter-mono" title="{{ operation.key }}">{{ operation.key }}</span>{% endif %}
+                                        </td>
+                                        <td><code>{{ helper.call(operation) }}</code></td>
+                                        <td>{{ helper.result(operation) }}</td>
+                                        <td>{{ helper.tokens(operation) }}</td>
+                                        <td>{{ helper.when(operation) }}</td>
+                                        <td class="text-muted text-right rate-limiter-mono">{{ '%.2f'|format(operation.duration * 1000) }}</td>
                                     </tr>
-                                </thead>
-                                {% for label, key in limiter.keys %}
-                                    <tbody>
-                                        <tr>
-                                            <th colspan="6" class="colored font-normal">
-                                                Key {{ label }}
-                                                <span class="text-muted">
-                                                    · {{ key.calls }} {{ key.calls == 1 ? 'call' : 'calls' }}
-                                                    {%- if key.problems %} · {{ key.problems }} rejected or failed{% endif %}
-                                                    {%- if key.last.operation == 'reset' %} · reset
-                                                    {%- elseif key.last.unlimited %} · no limit
-                                                    {%- elseif key.last.remaining is not null %} · now {{ key.last.remaining }} / {{ key.last.limit }} left{% endif %}
-                                                </span>
-                                            </th>
+                                    {% if details %}
+                                        <tr data-row-of="{{ operation.id }}" class="rate-limiter-details {{ operation.failed ? 'rate-limiter-failed' : operation.rejected ? 'rate-limiter-problem' : 'rate-limiter-sub' }}">
+                                            <td colspan="7">{{ details|raw }}</td>
                                         </tr>
-                                        {% for operation in key.operations %}
-                                            <tr data-problem="{{ operation.problem ? 1 : 0 }}" class="{{ operation.problem ? 'rate-limiter-rejected' }}">
-                                                <td class="text-muted">{{ operation.id }}</td>
-                                                <td class="col-wrap">
-                                                    <code>{{ operation.operation == 'reset' ? 'reset()' : operation.operation ~ '(' ~ operation.tokens ~ ')' }}</code>
-                                                    {% if operation.via %}<span class="rate-limiter-meta">via <a href="#rate-limiter-call-{{ operation.parent }}" data-timeline-link="{{ operation.parent }}">{{ operation.via }} #{{ operation.parent }}</a></span>{% endif %}
-                                                    {% if operation.decidedBy %}<span class="rate-limiter-meta">decided by {{ operation.decidedBy }}</span>{% endif %}
-                                                </td>
-                                                <td>{{ helper.result(operation) }}</td>
-                                                <td>{{ helper.tokens(operation) }}</td>
-                                                <td>{{ helper.timing(operation) }}</td>
-                                                <td class="text-muted text-right">{{ '%.2f'|format(operation.duration * 1000) }} ms</td>
-                                            </tr>
-                                        {% endfor %}
-                                    </tbody>
+                                    {% endif %}
+                                    {{ helper.sub_rows(operation, operation.id, 1) }}
                                 {% endfor %}
-                            </table>
-                        </div>
-                    {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab">
+                    <h3 class="tab-title">By limiter</h3>
+                    <div class="tab-content">
+                        {% for limiter in limiters %}
+                            {% set policy = limiter.policy is null ? 'custom' : limiter.policy == 'no_limit' ? 'no limit' : limiter.policy|replace({'_': ' '}) %}
+                            <div class="rate-limiter-section">
+                                <h3>
+                                    <span class="rate-limiter-mono">{{ limiter.name }}</span>
+                                    <small>
+                                        {{- policy -}}
+                                        {%- if limiter.settings %} · {{ limiter.settings }}{% elseif limiter.children %} · {{ limiter.children|join(' + ') }}{% endif -%}
+                                    </small>
+                                    {% if limiter.problems %}<span class="rate-limiter-problems">{{ limiter.problems }} {{ limiter.problems == 1 ? 'problem' : 'problems' }}</span>{% endif %}
+                                </h3>
+
+                                <table class="rate-limiter-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-id">#</th>
+                                            <th>Call</th>
+                                            <th class="col-result">Result</th>
+                                            <th class="col-tokens">Tokens</th>
+                                            <th class="col-time text-right">ms</th>
+                                        </tr>
+                                    </thead>
+                                    {% for key, operations in limiter.keys %}
+                                        <tbody>
+                                            {% if limiter.keys|length > 1 %}
+                                                <tr>
+                                                    <th colspan="5" class="rate-limiter-key-row rate-limiter-mono">{{ key is same as('') ? 'no key' : key }}</th>
+                                                </tr>
+                                            {% endif %}
+                                            {% for operation in operations %}
+                                                <tr data-problem="{{ operation.problem ? 1 : 0 }}" class="{{ operation.failed ? 'rate-limiter-failed' : operation.rejected ? 'rate-limiter-problem' }}">
+                                                    <td class="text-muted rate-limiter-mono">{{ operation.id }}</td>
+                                                    <td>
+                                                        <code>{{ helper.call(operation) }}</code>
+                                                        {% if operation.parent %}<span class="text-muted text-small">via <a href="#rate-limiter-call-{{ operation.parent }}" data-timeline-link="{{ operation.parent }}">#{{ operation.parent }}</a></span>{% endif %}
+                                                    </td>
+                                                    <td>{{ helper.result(operation) }}</td>
+                                                    <td>{{ helper.tokens(operation) }}</td>
+                                                    <td class="text-muted text-right rate-limiter-mono">{{ '%.2f'|format(operation.duration * 1000) }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    {% endfor %}
+                                </table>
+                            </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -410,25 +358,15 @@
             }
 
             const expanded = new Set();
-            document.querySelectorAll('[data-toggle-op]').forEach((button) => {
-                if ('1' === button.dataset.expanded) {
-                    expanded.add(button.dataset.toggleOp);
-                }
-                button.addEventListener('click', () => {
-                    const id = button.dataset.toggleOp;
-                    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
-                    update();
-                });
-            });
-
             const update = () => {
-                document.querySelectorAll('#rate-limiter-timeline tr[data-op]').forEach((row) => {
-                    const ancestors = row.dataset.ancestors ? row.dataset.ancestors.split(' ') : [];
-                    const visible = (!filter.checked || '1' === row.dataset.topProblem) && ancestors.every((id) => expanded.has(id));
+                document.querySelectorAll('#rate-limiter-timeline tr[data-top]').forEach((row) => {
+                    const id = row.dataset.top;
+                    const visible = !filter.checked || '1' === row.dataset.problem;
                     row.style.display = visible ? '' : 'none';
-                });
-                document.querySelectorAll('[data-toggle-op]').forEach((button) => {
-                    button.setAttribute('aria-expanded', expanded.has(button.dataset.toggleOp) ? 'true' : 'false');
+                    document.querySelectorAll('#rate-limiter-timeline tr[data-row-of="' + id + '"]').forEach((sub) => {
+                        sub.style.display = visible && expanded.has(id) ? '' : 'none';
+                    });
+                    row.querySelector('[data-toggle]')?.setAttribute('aria-expanded', expanded.has(id) ? 'true' : 'false');
                 });
 
                 document.querySelectorAll('.rate-limiter-section').forEach((section) => {
@@ -447,11 +385,21 @@
                 });
             };
 
+            document.querySelectorAll('[data-toggle]').forEach((button) => {
+                if ('1' === button.dataset.expanded) {
+                    expanded.add(button.dataset.toggle);
+                }
+                button.addEventListener('click', () => {
+                    const id = button.dataset.toggle;
+                    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+                    update();
+                });
+            });
+
             document.querySelectorAll('[data-timeline-link]').forEach((link) => {
                 link.addEventListener('click', () => {
                     document.querySelector('#rate-limiter-tabs > .tab-navigation .tab-control')?.click();
-                    const row = document.getElementById('rate-limiter-call-' + link.dataset.timelineLink);
-                    (row?.dataset.ancestors || '').split(' ').filter(Boolean).forEach((id) => expanded.add(id));
+                    expanded.add(link.dataset.timelineLink);
                     update();
                 });
             });

@@ -55,8 +55,8 @@ class RateLimiterTracingTest extends TestCase
         $this->assertSame([true, false, null, true], array_column($operations, 'accepted'));
         $this->assertSame('api', $operations[0]['limiter']);
         $this->assertSame('fixed_window', $operations[0]['policy']);
-        $this->assertSame(['#1', '#1', '#1', '#1'], array_column($operations, 'key'));
-        $this->assertStringNotContainsString('secret-key', json_encode($operations));
+        $this->assertSame(['secret-key', 'secret-key', 'secret-key', 'secret-key'], array_column($operations, 'key'));
+        $this->assertSame('2 per minute', $operations[0]['settings']);
         $this->assertInstanceOf(TraceableRateLimiterFactory::class, $factory);
     }
 
@@ -145,7 +145,7 @@ class RateLimiterTracingTest extends TestCase
         $operations = $collector->getOperations();
         $this->assertSame(['compound', 'short', 'long', 'compound', 'short'], array_column($operations, 'limiter'));
         $this->assertSame(['compound', 'fixed_window', 'fixed_window', 'compound', 'fixed_window'], array_column($operations, 'policy'));
-        $this->assertSame(['#1', '#1', '#1', '#1', '#1'], array_column($operations, 'key'));
+        $this->assertSame(['secret', 'secret', 'secret', 'secret', 'secret'], array_column($operations, 'key'));
         $this->assertSame($operations[0]['id'], $operations[1]['parent']);
         $this->assertSame($operations[0]['id'], $operations[2]['parent']);
         $this->assertSame($operations[3]['id'], $operations[4]['parent']);
@@ -177,16 +177,15 @@ class RateLimiterTracingTest extends TestCase
         $this->assertSame(['compound', 'short', 'long', 'bucket'], array_keys($limiters));
         $this->assertSame(['short', 'long'], $limiters['compound']['children']);
         $this->assertSame([2, 3, 1], [$limiters['compound']['calls'], $limiters['short']['calls'], $limiters['long']['calls']], 'The rejected compound call stops before "long".');
-        $this->assertSame([1, 1, 0], [$limiters['compound']['rejected'], $limiters['short']['rejected'], $limiters['long']['rejected']]);
-        $this->assertSame(['1 per 1 minute', '5 per 1 hour', 'burst 10, 2 per 1 second'], [$limiters['short']['settings'], $limiters['long']['settings'], $limiters['bucket']['settings']]);
+        $this->assertSame([1, 1, 0], [$limiters['compound']['problems'], $limiters['short']['problems'], $limiters['long']['problems']]);
+        $this->assertSame(['1 per minute', '5 per hour', '2 per second, burst 10'], [$limiters['short']['settings'], $limiters['long']['settings'], $limiters['bucket']['settings']]);
         $this->assertNull($limiters['compound']['settings']);
 
-        $this->assertSame(['#1', '#2'], array_keys($limiters['short']['keys']));
-        $this->assertSame(['compound', 'compound'], array_column($limiters['short']['keys']['#1']['operations'], 'via'));
-        $this->assertNull($limiters['short']['keys']['#2']['operations'][0]['via']);
-        $this->assertSame([2, 1, 0], [$limiters['short']['keys']['#1']['calls'], $limiters['short']['keys']['#1']['problems'], $limiters['short']['keys']['#1']['last']['remaining']]);
-        $this->assertSame([true, false], array_column($limiters['compound']['keys']['#1']['operations'], 'accepted'));
-        $this->assertSame(['short', 'short'], array_column($limiters['compound']['keys']['#1']['operations'], 'decidedBy'), 'The most restrictive child decides an accepted call, the rejecting child a rejected one.');
+        $this->assertSame(['a', 'b'], array_keys($limiters['short']['keys']));
+        $this->assertSame(['compound', 'compound'], array_column($limiters['short']['keys']['a'], 'via'));
+        $this->assertNull($limiters['short']['keys']['b'][0]['via']);
+        $this->assertSame([true, false], array_column($limiters['compound']['keys']['a'], 'accepted'));
+        $this->assertSame(['short', 'short'], array_column($limiters['compound']['keys']['a'], 'decidedBy'), 'The most restrictive child decides an accepted call, the rejecting child a rejected one.');
 
         $timeline = $collector->getTimeline();
         $this->assertSame(['compound', 'compound', 'short', 'bucket'], array_column($timeline, 'limiter'));
@@ -194,8 +193,6 @@ class RateLimiterTracingTest extends TestCase
         $this->assertSame([false, false], array_column($timeline[0]['children'], 'decides'), 'An accepted compound call has no deciding child to flag.');
         $this->assertSame(['short'], array_column($timeline[1]['children'], 'limiter'), 'The rejected compound call stops before "long".');
         $this->assertTrue($timeline[1]['children'][0]['decides']);
-        $this->assertSame(3, $collector->getChildCount());
-        $this->assertSame(['limiter' => 'short', 'key' => '#1', 'remaining' => 0, 'limit' => 1], $collector->getTightest());
     }
 
     public function testReservationsAndDisabledProfiling()
@@ -248,23 +245,22 @@ class RateLimiterTracingTest extends TestCase
         $this->assertTrue($trace->getOperations($request)[3]['unlimited']);
     }
 
-    public function testKeyLabelsAreSharedWithinARequestAndNotSavedAsRawKeys()
+    public function testOperationsWithoutKeyAreGroupedTogether()
     {
         $requests = new RequestStack();
         $request = Request::create('/');
         $requests->push($request);
         $trace = new RateLimiterTrace($requests);
-        $builder = new TraceableRateLimiterBuilder(new RateLimiterBuilder(new InMemoryStorage()), $trace);
+        $factory = (new TraceableRateLimiterBuilder(new RateLimiterBuilder(new InMemoryStorage()), $trace))->fixedWindow('api', 5, '1 minute');
 
-        $builder->fixedWindow('first', 2, '1 minute')->create('private-key')->consume();
-        $builder->fixedWindow('second', 2, '1 minute')->create('private-key')->consume();
-        $builder->fixedWindow('first', 2, '1 minute')->create('another-key')->consume();
+        $factory->create()->consume();
+        $factory->create('user-42')->consume();
+        $factory->create()->consume();
 
         $collector = new RateLimiterDataCollector($trace);
         $collector->collect($request, new Response());
-        $this->assertSame(['#1', '#1', '#2'], array_column($collector->getOperations(), 'key'));
-        $this->assertStringNotContainsString('private-key', serialize($collector));
-        $this->assertStringNotContainsString('another-key', serialize($collector));
+        $this->assertSame([null, 'user-42', null], array_column($collector->getOperations(), 'key'));
+        $this->assertSame(['', 'user-42'], array_keys($collector->getLimiters()['api']['keys']));
     }
 
     public function testSubrequestOperationsKeepTheirOwnParents()
@@ -293,7 +289,7 @@ class RateLimiterTracingTest extends TestCase
         $this->assertSame(['parent'], array_column($collector->getOperations(), 'limiter'));
     }
 
-    public function testExceptionIsRecordedAndRethrownWithoutItsMessage()
+    public function testFailureIsRecordedAndTheExceptionRethrown()
     {
         $requests = new RequestStack();
         $request = Request::create('/');
@@ -311,8 +307,8 @@ class RateLimiterTracingTest extends TestCase
         $collector = new RateLimiterDataCollector($trace);
         $collector->collect($request, new Response());
         $this->assertSame(1, $collector->getErrorCount());
-        $this->assertSame(\RuntimeException::class, $collector->getOperations()[0]['exception']);
-        $this->assertStringNotContainsString('private details', json_encode($collector->getOperations()));
+        $this->assertTrue($collector->getOperations()[0]['failed']);
+        $this->assertStringNotContainsString('private details', serialize($collector), 'The exception panel shows the exception; the profile does not keep a copy.');
     }
 }
 

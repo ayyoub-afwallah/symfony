@@ -23,7 +23,6 @@ final class RateLimiterTrace
 {
     private \WeakMap $operations;
     private \WeakMap $parents;
-    private \WeakMap $keyLabels;
     private int $nextId = 0;
 
     public function __construct(
@@ -32,21 +31,24 @@ final class RateLimiterTrace
     ) {
         $this->operations = new \WeakMap();
         $this->parents = new \WeakMap();
-        $this->keyLabels = new \WeakMap();
     }
 
     /**
-     * Summarizes a limiter configuration, e.g. "3 per 1 minute" or "burst 10, 2 per 1 second".
+     * Summarizes a limiter configuration, e.g. "3 per minute" or "2 per second, burst 10".
      */
     public static function describeConfig(array $config): ?string
     {
-        $interval = static fn (\DateInterval|string $interval) => $interval instanceof \DateInterval
-            ? (new \DateTimeImmutable('@0'))->add($interval)->getTimestamp().' seconds'
-            : $interval;
+        $per = static function (\DateInterval|string $interval): string {
+            if ($interval instanceof \DateInterval) {
+                $interval = (new \DateTimeImmutable('@0'))->add($interval)->getTimestamp().' seconds';
+            }
+
+            return 'per '.(preg_match('/^1\s+(\w+?)s?$/', trim($interval), $m) ? $m[1] : trim($interval));
+        };
 
         return match ($config['policy'] ?? null) {
-            'fixed_window', 'sliding_window' => isset($config['limit'], $config['interval']) ? $config['limit'].' per '.$interval($config['interval']) : null,
-            'token_bucket' => isset($config['limit'], $config['rate']['interval']) ? \sprintf('burst %s, %s per %s', $config['limit'], $config['rate']['amount'] ?? 1, $interval($config['rate']['interval'])) : null,
+            'fixed_window', 'sliding_window' => isset($config['limit'], $config['interval']) ? $config['limit'].' '.$per($config['interval']) : null,
+            'token_bucket' => isset($config['limit'], $config['rate']['interval']) ? ($amount = $config['rate']['amount'] ?? 1).' '.$per($config['rate']['interval']).($amount == $config['limit'] ? '' : ', burst '.$config['limit']) : null,
             default => null,
         };
     }
@@ -68,22 +70,18 @@ final class RateLimiterTrace
         }
 
         $id = ++$this->nextId;
-        $keyLabels = $this->keyLabels[$request] ?? [];
-        $keyIdentity = null === $key ? "\0" : "\1".$key;
-        $keyLabel = $keyLabels[$keyIdentity] ??= '#'.(\count($keyLabels) + 1);
-        $this->keyLabels[$request] = $keyLabels;
         $parents = $this->parents[$request] ?? [];
         $parent = end($parents) ?: null;
         $parents[] = $id;
         $this->parents[$request] = $parents;
         $start = microtime(true);
         $result = null;
-        $failure = null;
+        $failed = false;
 
         try {
             return $result = $call();
         } catch (\Throwable $e) {
-            $failure = $e::class;
+            $failed = true;
             throw $e;
         } finally {
             $parents = $this->parents[$request];
@@ -97,7 +95,7 @@ final class RateLimiterTrace
                 'limiter' => $name,
                 'policy' => $policy,
                 'settings' => $settings,
-                'key' => $keyLabel,
+                'key' => $key,
                 'operation' => $operation,
                 'tokens' => $tokens,
                 'time' => $start,
@@ -109,7 +107,7 @@ final class RateLimiterTrace
                 'resetAt' => $limit?->getResetAt()?->getTimestamp(),
                 'retryAfter' => $limit?->getRetryAfter()->getTimestamp(),
                 'timeToAct' => $result instanceof Reservation ? $result->getTimeToAct() : null,
-                'exception' => $failure,
+                'failed' => $failed,
             ];
             $this->operations[$request] = $operations;
         }
@@ -132,7 +130,6 @@ final class RateLimiterTrace
     {
         $this->operations = new \WeakMap();
         $this->parents = new \WeakMap();
-        $this->keyLabels = new \WeakMap();
         $this->nextId = 0;
     }
 }

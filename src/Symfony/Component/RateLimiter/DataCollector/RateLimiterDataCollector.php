@@ -50,17 +50,12 @@ final class RateLimiterDataCollector extends DataCollector
 
     public function getErrorCount(): int
     {
-        return \count(array_filter($this->getTopLevelOperations(), static fn (array $operation) => null !== $operation['exception']));
+        return \count(array_filter($this->getTopLevelOperations(), static fn (array $operation) => $operation['failed']));
     }
 
     public function getTotalDuration(): float
     {
         return array_sum(array_column($this->getTopLevelOperations(), 'duration'));
-    }
-
-    public function getChildCount(): int
-    {
-        return \count($this->getOperations()) - $this->getTopLevelCount();
     }
 
     /**
@@ -79,7 +74,9 @@ final class RateLimiterDataCollector extends DataCollector
     }
 
     /**
-     * @return array<string, array{name: string, policy: ?string, settings: ?string, calls: int, rejected: int, errors: int, children: list<string>, keys: array<string, array{calls: int, problems: int, last: array, operations: list<array>}>}>
+     * Operations grouped by limiter, then by key ("" when no key was given).
+     *
+     * @return array<string, array{name: string, policy: ?string, settings: ?string, calls: int, problems: int, children: list<string>, keys: array<string, list<array>>}>
      */
     public function getLimiters(): array
     {
@@ -88,49 +85,15 @@ final class RateLimiterDataCollector extends DataCollector
 
         foreach ($operations as $operation) {
             $limiter = &$limiters[$operation['limiter']];
-            $limiter ??= ['name' => $operation['limiter'], 'policy' => $operation['policy'], 'settings' => $operation['settings'] ?? null, 'calls' => 0, 'rejected' => 0, 'errors' => 0, 'children' => [], 'keys' => []];
+            $limiter ??= ['name' => $operation['limiter'], 'policy' => $operation['policy'], 'settings' => $operation['settings'] ?? null, 'calls' => 0, 'problems' => 0, 'children' => [], 'keys' => []];
             ++$limiter['calls'];
-            $limiter['rejected'] += (int) $operation['rejected'];
-            $limiter['errors'] += (int) (null !== $operation['exception']);
+            $limiter['problems'] += (int) $operation['problem'];
             $limiter['children'] = array_values(array_unique([...$limiter['children'], ...array_column(array_filter($operations, static fn (array $child) => $operation['id'] === $child['parent']), 'limiter')]));
-
-            $key = &$limiter['keys'][$operation['key']];
-            $key ??= ['calls' => 0, 'problems' => 0, 'last' => null, 'operations' => []];
-            ++$key['calls'];
-            $key['problems'] += (int) $operation['problem'];
-            $key['last'] = $operation;
-            $key['operations'][] = $operation;
-            unset($limiter, $key);
+            $limiter['keys'][$operation['key'] ?? ''][] = $operation;
+            unset($limiter);
         }
 
         return $limiters;
-    }
-
-    /**
-     * The limiter and key with the smallest share of capacity left at the end of the request.
-     *
-     * @return array{limiter: string, key: string, remaining: int, limit: int}|null
-     */
-    public function getTightest(): ?array
-    {
-        $tightest = null;
-        foreach ($this->getLimiters() as $limiter) {
-            if ('compound' === $limiter['policy']) {
-                continue;
-            }
-
-            foreach ($limiter['keys'] as $label => $key) {
-                $last = $key['last'];
-                if ($last['unlimited'] || null === $last['remaining'] || !$last['limit']) {
-                    continue;
-                }
-                if (null === $tightest || $last['remaining'] / $last['limit'] < $tightest['remaining'] / $tightest['limit']) {
-                    $tightest = ['limiter' => $limiter['name'], 'key' => $label, 'remaining' => $last['remaining'], 'limit' => $last['limit']];
-                }
-            }
-        }
-
-        return $tightest;
     }
 
     private function getDetailedOperations(): array
@@ -141,7 +104,7 @@ final class RateLimiterDataCollector extends DataCollector
             $children = array_filter($operations, static fn (array $child) => $id === $child['parent']);
             $parent = null !== $operation['parent'] ? $operations[$operation['parent']] ?? null : null;
             $operation['rejected'] = 'reserve' !== $operation['operation'] && false === $operation['accepted'];
-            $operation['problem'] = $operation['rejected'] || null !== $operation['exception'];
+            $operation['problem'] = $operation['rejected'] || $operation['failed'];
             $operation['via'] = $parent['limiter'] ?? null;
             $operation['decidedBy'] = $children ? $this->findDecidingChild($operation, array_values($children)) : null;
             $operations[$id] = $operation;
@@ -158,7 +121,7 @@ final class RateLimiterDataCollector extends DataCollector
     private function findDecidingChild(array $operation, array $children): ?string
     {
         foreach ($children as $child) {
-            if (null !== $operation['exception'] ? null !== $child['exception'] : false === $operation['accepted'] && false === $child['accepted']) {
+            if ($operation['failed'] ? $child['failed'] : false === $operation['accepted'] && false === $child['accepted']) {
                 return $child['limiter'];
             }
         }
