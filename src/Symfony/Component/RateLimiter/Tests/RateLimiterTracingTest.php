@@ -182,10 +182,20 @@ class RateLimiterTracingTest extends TestCase
         $this->assertNull($limiters['compound']['settings']);
 
         $this->assertSame(['#1', '#2'], array_keys($limiters['short']['keys']));
-        $this->assertSame(['compound', 'compound'], array_column($limiters['short']['keys']['#1'], 'via'));
-        $this->assertNull($limiters['short']['keys']['#2'][0]['via']);
-        $this->assertSame([true, false], array_column($limiters['compound']['keys']['#1'], 'accepted'));
-        $this->assertSame(['short', 'short'], array_column($limiters['compound']['keys']['#1'], 'decidedBy'), 'The most restrictive child decides an accepted call, the rejecting child a rejected one.');
+        $this->assertSame(['compound', 'compound'], array_column($limiters['short']['keys']['#1']['operations'], 'via'));
+        $this->assertNull($limiters['short']['keys']['#2']['operations'][0]['via']);
+        $this->assertSame([2, 1, 0], [$limiters['short']['keys']['#1']['calls'], $limiters['short']['keys']['#1']['problems'], $limiters['short']['keys']['#1']['last']['remaining']]);
+        $this->assertSame([true, false], array_column($limiters['compound']['keys']['#1']['operations'], 'accepted'));
+        $this->assertSame(['short', 'short'], array_column($limiters['compound']['keys']['#1']['operations'], 'decidedBy'), 'The most restrictive child decides an accepted call, the rejecting child a rejected one.');
+
+        $timeline = $collector->getTimeline();
+        $this->assertSame(['compound', 'compound', 'short', 'bucket'], array_column($timeline, 'limiter'));
+        $this->assertSame(['short', 'long'], array_column($timeline[0]['children'], 'limiter'));
+        $this->assertSame([false, false], array_column($timeline[0]['children'], 'decides'), 'An accepted compound call has no deciding child to flag.');
+        $this->assertSame(['short'], array_column($timeline[1]['children'], 'limiter'), 'The rejected compound call stops before "long".');
+        $this->assertTrue($timeline[1]['children'][0]['decides']);
+        $this->assertSame(3, $collector->getChildCount());
+        $this->assertSame(['limiter' => 'short', 'key' => '#1', 'remaining' => 0, 'limit' => 1], $collector->getTightest());
     }
 
     public function testReservationsAndDisabledProfiling()

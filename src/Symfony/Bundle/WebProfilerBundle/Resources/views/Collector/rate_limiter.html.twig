@@ -4,30 +4,102 @@
     {{ parent() }}
 
     <style>
-        .sf-profiler-rate-limiter {
+        .rate-limiter-table {
             table-layout: fixed;
         }
-        .sf-profiler-rate-limiter td {
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .rate-limiter-table td {
+            overflow-wrap: anywhere;
             vertical-align: top;
+        }
+        .rate-limiter-table td .label,
+        .rate-limiter-table td code,
+        .rate-limiter-name,
+        .rate-limiter-when {
             white-space: nowrap;
         }
-        .sf-profiler-rate-limiter .col-id { width: 4em; }
-        .sf-profiler-rate-limiter .col-call { width: 21%; }
-        .sf-profiler-rate-limiter .col-result { width: 12%; }
-        .sf-profiler-rate-limiter .col-duration { width: 9%; }
-        .sf-profiler-rate-limiter th { white-space: nowrap; }
-        .sf-profiler-rate-limiter td.col-wrap { white-space: normal; word-break: break-word; }
-        .sf-profiler-rate-limiter .limiter-meta {
-            display: block;
+        .rate-limiter-table abbr.rate-limiter-meta {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .sf-profiler-rate-limiter .label.status-neutral,
+        .rate-limiter-table th {
+            white-space: nowrap;
+        }
+        .rate-limiter-table .col-id { width: 5.5em; }
+        .rate-limiter-table .col-limiter { width: 24%; }
+        .rate-limiter-table .col-key { width: 5%; }
+        .rate-limiter-table .col-call { width: 10%; }
+        .rate-limiter-table .col-result { width: 12%; }
+        .rate-limiter-table .col-tokens { width: 15%; }
+        .rate-limiter-table .col-when { width: 13%; }
+        .rate-limiter-table .col-time { width: 8%; }
+        .rate-limiter-table .col-wrap { white-space: normal; word-break: break-word; }
+        .rate-limiter-table tr.rate-limiter-child td { background: var(--table-row-even-background, transparent); }
+        .rate-limiter-table tr.rate-limiter-rejected td { background: var(--status-error-background, rgba(176, 65, 62, .08)); }
+        .rate-limiter-meta {
+            display: block;
+            color: var(--color-muted);
+            font-size: 12px;
+        }
+        .rate-limiter-table .label.status-neutral,
         .rate-limiter-section h3 .label.status-neutral {
             color: var(--badge-color);
         }
+        .rate-limiter-problem {
+            color: var(--color-error);
+            font-weight: bold;
+        }
+        .rate-limiter-bar {
+            background: var(--base-2);
+            border-radius: 3px;
+            height: 5px;
+            margin-top: 4px;
+            overflow: hidden;
+            width: 120px;
+        }
+        .rate-limiter-bar span {
+            display: block;
+            height: 100%;
+        }
+        .rate-limiter-bar .bar-ok { background: var(--color-success); }
+        .rate-limiter-bar .bar-low { background: var(--color-warning); }
+        .rate-limiter-bar .bar-empty { background: var(--color-error); }
+        .rate-limiter-toggle {
+            background: none;
+            border: 1px solid var(--table-border-color);
+            border-radius: 4px;
+            color: inherit;
+            cursor: pointer;
+            height: 22px;
+            line-height: 1;
+            margin-right: 4px;
+            padding: 0;
+            width: 22px;
+        }
+        .rate-limiter-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
+        .rate-limiter-decided {
+            border: 1px solid var(--color-error);
+            border-radius: 4px;
+            color: var(--color-error);
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 4px;
+            padding: 0 4px;
+        }
+        .rate-limiter-summary {
+            border: 1px solid var(--table-border-color);
+            border-radius: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5em 2em;
+            margin: 0 0 1em;
+            padding: .75em 1em;
+        }
+        .rate-limiter-filters {
+            margin: 1em 0;
+        }
         .rate-limiter-section {
-            margin-top: 2em;
+            margin-top: 1.5em;
         }
         .rate-limiter-section h3 {
             align-items: baseline;
@@ -36,16 +108,10 @@
             gap: .5em;
             margin-bottom: .5em;
         }
-        .rate-limiter-section h3 .limiter-counts {
+        .rate-limiter-section h3 .rate-limiter-counts {
             font-size: var(--font-size-body);
             font-weight: normal;
             margin-left: auto;
-        }
-        .rate-limiter-filters {
-            align-items: center;
-            display: flex;
-            gap: 1.5em;
-            margin: 1em 0;
         }
     </style>
 {% endblock %}
@@ -53,29 +119,30 @@
 {% block toolbar %}
     {% if collector.topLevelCount > 0 %}
         {% set status_color = collector.errorCount ? 'red' : collector.rejectedCount ? 'yellow' : '' %}
+        {% set tightest = collector.tightest %}
         {% set icon %}
             {{ source('@WebProfiler/Icon/time.svg') }}
             <span class="sf-toolbar-value">{{ collector.topLevelCount }}</span>
         {% endset %}
         {% set text %}
             <div class="sf-toolbar-info-piece">
-                <b>Operations</b>
+                <b>Calls</b>
                 <span>{{ collector.topLevelCount }}</span>
             </div>
             <div class="sf-toolbar-info-piece">
                 <b>Rejected</b>
                 <span class="sf-toolbar-status {{ collector.rejectedCount ? 'sf-toolbar-status-yellow' }}">{{ collector.rejectedCount }}</span>
             </div>
-            {% if collector.errorCount %}
+            <div class="sf-toolbar-info-piece">
+                <b>Failed</b>
+                <span class="sf-toolbar-status {{ collector.errorCount ? 'sf-toolbar-status-red' }}">{{ collector.errorCount }}</span>
+            </div>
+            {% if tightest %}
                 <div class="sf-toolbar-info-piece">
-                    <b>Errors</b>
-                    <span class="sf-toolbar-status sf-toolbar-status-red">{{ collector.errorCount }}</span>
+                    <b>Tightest</b>
+                    <span>{{ tightest.limiter }} {{ tightest.remaining }}/{{ tightest.limit }}</span>
                 </div>
             {% endif %}
-            <div class="sf-toolbar-info-piece">
-                <b>Total time</b>
-                <span>{{ '%.2f'|format(collector.totalDuration * 1000) }} ms</span>
-            </div>
         {% endset %}
         {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', {link: profiler_url, status: status_color}) }}
     {% endif %}
@@ -114,7 +181,7 @@
         {%- set result, status = 'unlimited', 'success' -%}
     {%- elseif operation.operation == 'reserve' -%}
         {%- set result, status = 'reserved', 'success' -%}
-    {%- elseif operation.accepted is same as(false) -%}
+    {%- elseif operation.rejected -%}
         {%- set result, status = 'rejected', 'warning' -%}
     {%- elseif operation.accepted -%}
         {%- set result, status = 'accepted', 'success' -%}
@@ -122,27 +189,70 @@
         {%- set result, status = 'unknown', 'neutral' -%}
     {%- endif -%}
     <span class="label status-{{ status }}">{{ result }}</span>
-    {%- if operation.exception %}<abbr class="limiter-meta text-muted text-small" title="{{ operation.exception }}">{{ operation.exception|split('\\')|last }}</abbr>{% endif -%}
+    {%- if operation.exception %}<abbr class="rate-limiter-meta" title="{{ operation.exception }}">{{ operation.exception|split('\\')|last }}</abbr>{% endif -%}
 {% endmacro %}
 
-{% macro timing(operation, policy) %}
-    {%- import _self as helper -%}
-    {%- if operation.timeToAct is not null -%}
-        acts {{ helper.relative_time(operation.timeToAct, operation.time) }}
-    {%- elseif operation.accepted is same as(false) and operation.retryAfter is not null -%}
-        retry {{ helper.relative_time(operation.retryAfter, operation.time) }}
-    {%- elseif operation.resetAt is not null -%}
-        {{ 'token_bucket' == policy ? 'full' : 'resets' }} {{ helper.relative_time(operation.resetAt, operation.time) }}
+{% macro tokens(operation) %}
+    {%- if operation.exception or operation.operation == 'reset' -%}
+        <span class="text-muted">—</span>
+    {%- elseif operation.unlimited -%}
+        no limit
+    {%- elseif operation.rejected and operation.remaining is not null -%}
+        <span class="rate-limiter-problem">needed {{ operation.tokens }}, had {{ operation.remaining }}</span>
+    {%- elseif operation.remaining is not null -%}
+        {{ operation.remaining }} / {{ operation.limit }} left
     {%- else -%}
         <span class="text-muted">—</span>
     {%- endif -%}
+    {%- if not operation.exception and not operation.unlimited and operation.operation != 'reset' and operation.remaining is not null and operation.limit -%}
+        {%- set percent = (operation.remaining / operation.limit * 100)|round -%}
+        <div class="rate-limiter-bar" aria-hidden="true"><span class="{{ percent == 0 ? 'bar-empty' : percent <= 34 ? 'bar-low' : 'bar-ok' }}" style="width: {{ percent }}%"></span></div>
+    {%- endif -%}
 {% endmacro %}
 
-{% macro remaining(operation) %}
-    {%- if operation.unlimited -%}∞
-    {%- elseif operation.remaining is not null -%}{{ operation.remaining }} <span class="text-muted">/ {{ operation.limit }}</span>
-    {%- else -%}<span class="text-muted">—</span>
+{% macro timing(operation) %}
+    {%- import _self as helper -%}
+    <span class="rate-limiter-when">
+    {%- if operation.timeToAct is not null -%}
+        acts {{ helper.relative_time(operation.timeToAct, operation.time) }}
+    {%- elseif operation.rejected and operation.retryAfter is not null -%}
+        retry {{ helper.relative_time(operation.retryAfter, operation.time) }}
+    {%- elseif operation.resetAt is not null -%}
+        resets {{ helper.relative_time(operation.resetAt, operation.time) }}
+    {%- else -%}
+        <span class="text-muted">—</span>
     {%- endif -%}
+    </span>
+{% endmacro %}
+
+{% macro timeline_rows(operation, ancestors, top_problem, depth) %}
+    {%- import _self as helper -%}
+    {% set expanded = operation.problem %}
+    <tr data-op="{{ operation.id }}" data-ancestors="{{ ancestors|join(' ') }}" data-top-problem="{{ top_problem ? 1 : 0 }}"
+        class="{{ depth > 0 ? 'rate-limiter-child' }} {{ operation.problem ? 'rate-limiter-rejected' }}" id="rate-limiter-call-{{ operation.id }}">
+        <td class="nowrap-cell">
+            {% if operation.children %}
+                <button type="button" class="rate-limiter-toggle" data-toggle-op="{{ operation.id }}" data-expanded="{{ expanded ? 1 : 0 }}" aria-expanded="{{ expanded ? 'true' : 'false' }}" aria-label="Show the calls made by call {{ operation.id }}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                </button>
+            {% endif %}
+            <span class="text-muted">{{ operation.id }}</span>
+        </td>
+        <td class="col-wrap" style="padding-left: {{ 0.6 + depth * 1.4 }}em">
+            <span class="rate-limiter-name">{% if depth > 0 %}<span class="text-muted" aria-hidden="true">└</span> {% endif %}<strong>{{ operation.limiter }}</strong>
+            {%- if operation.decides %}<span class="rate-limiter-decided">decided</span>{% endif %}</span>
+            {% if operation.decidedBy %}<span class="rate-limiter-meta">decided by {{ operation.decidedBy }}</span>{% endif %}
+        </td>
+        <td>{{ depth > 0 ? '' : operation.key }}</td>
+        <td><code>{{ operation.operation == 'reset' ? 'reset()' : operation.operation ~ '(' ~ operation.tokens ~ ')' }}</code></td>
+        <td>{{ helper.result(operation) }}</td>
+        <td>{{ helper.tokens(operation) }}</td>
+        <td>{{ helper.timing(operation) }}</td>
+        <td class="text-muted text-right">{{ '%.2f'|format(operation.duration * 1000) }} ms</td>
+    </tr>
+    {% for child in operation.children %}
+        {{ helper.timeline_rows(child, ancestors|merge([operation.id]), top_problem, depth + 1) }}
+    {% endfor %}
 {% endmacro %}
 
 {% block panel %}
@@ -157,6 +267,8 @@
         </div>
     {% else %}
         {% set limiters = collector.limiters %}
+        {% set tightest = collector.tightest %}
+
         <div class="metrics">
             <div class="metric">
                 <span class="value">{{ limiters|length }}</span>
@@ -164,7 +276,7 @@
             </div>
             <div class="metric">
                 <span class="value">{{ collector.topLevelCount }}</span>
-                <span class="label">Operations</span>
+                <span class="label">Calls{% if collector.childCount %} <span class="text-muted">+ {{ collector.childCount }} inside compounds</span>{% endif %}</span>
             </div>
             <div class="metric">
                 <span class="value">{{ collector.rejectedCount }}</span>
@@ -172,7 +284,7 @@
             </div>
             <div class="metric">
                 <span class="value">{{ collector.errorCount }}</span>
-                <span class="label">Errors</span>
+                <span class="label">Failed</span>
             </div>
             <div class="metric">
                 <span class="value">{{ '%.2f'|format(collector.totalDuration * 1000) }} <span class="unit">ms</span></span>
@@ -180,91 +292,110 @@
             </div>
         </div>
 
-        <p class="text-muted">Operations grouped by limiter and key, numbered in call order. Limiters called by a compound limiter also appear in their own section.</p>
-
-        <div class="rate-limiter-filters">
-            <label>
-                Policy
-                <select id="rate-limiter-policy-filter">
-                    <option value="">all</option>
-                    {% for policy in limiters|map(l => (l.policy ?? 'custom'))|reduce((carry, p) => p in carry ? carry : carry|merge([p]), []) %}
-                        <option value="{{ policy }}">{{ policy }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label><input type="checkbox" id="rate-limiter-problem-filter"> only rejected or failed calls</label>
+        <div class="rate-limiter-summary">
+            {% if tightest %}
+                <span>Tightest limiter: <strong>{{ tightest.limiter }}</strong> · key {{ tightest.key }} · <strong class="{{ tightest.remaining == 0 ? 'rate-limiter-problem' }}">{{ tightest.remaining }} / {{ tightest.limit }} left</strong></span>
+            {% endif %}
+            <span class="text-muted">One call is one operation made by your code; calls a compound limiter makes on its limiters are nested under it.</span>
         </div>
 
-        {% for limiter in limiters %}
-            {% set policy = limiter.policy ?? 'custom' %}
-            {% set columns = policy == 'no_limit' ? 3 : policy == 'compound' ? 6 : 5 %}
-            <div class="rate-limiter-section" data-policy="{{ policy }}">
-                <h3>
-                    {{ limiter.name }}
-                    <span class="label status-neutral">{{ policy }}</span>
-                    {% if limiter.settings %}
-                        <span class="text-muted text-small">{{ limiter.settings }}</span>
-                    {% elseif limiter.children %}
-                        <span class="text-muted text-small">of {{ limiter.children|join(' + ') }}</span>
-                    {% endif %}
-                    <span class="limiter-counts text-muted">
-                        {{ limiter.calls }} {{ limiter.calls == 1 ? 'call' : 'calls' }}
-                        {%- if limiter.rejected %} · {{ limiter.rejected }} rejected{% endif %}
-                        {%- if limiter.errors %} · {{ limiter.errors }} failed{% endif %}
-                    </span>
-                </h3>
+        <div class="rate-limiter-filters">
+            <label><input type="checkbox" id="rate-limiter-problem-filter"> Only rejected or failed calls</label>
+        </div>
 
-                <table class="sf-profiler-rate-limiter">
-                    <thead>
-                        <tr>
-                            <th class="num-col col-id">#</th>
-                            <th class="col-call">Call</th>
-                            <th class="col-result">Result</th>
-                            {% if policy == 'token_bucket' %}
-                                <th>Tokens left</th>
-                            {% elseif policy != 'no_limit' %}
-                                <th>Remaining</th>
-                            {% endif %}
-                            {% if policy == 'compound' %}
-                                <th>Decided by</th>
-                            {% endif %}
-                            {% if policy != 'no_limit' %}
-                                <th>{{ policy in ['fixed_window', 'sliding_window'] ? 'Window' : 'Timing' }}</th>
-                            {% endif %}
-                            <th class="col-duration">Duration</th>
-                        </tr>
-                    </thead>
-                    {% for key, operations in limiter.keys %}
-                        <tbody>
+        <div class="sf-tabs" id="rate-limiter-tabs">
+            <div class="tab">
+                <h3 class="tab-title">Timeline <span class="badge">{{ collector.topLevelCount }}</span></h3>
+                <div class="tab-content">
+                    <table class="rate-limiter-table" id="rate-limiter-timeline">
+                        <thead>
                             <tr>
-                                <th colspan="{{ columns + 1 }}" class="colored font-normal">Key {{ key }}</th>
+                                <th class="col-id">#</th>
+                                <th class="col-limiter">Limiter</th>
+                                <th class="col-key">Key</th>
+                                <th class="col-call">Call</th>
+                                <th class="col-result">Result</th>
+                                <th class="col-tokens">Tokens</th>
+                                <th class="col-when">Resets / retry</th>
+                                <th class="col-time text-right">Time</th>
                             </tr>
-                            {% for operation in operations %}
-                                {% set problem = operation.exception or ('reserve' != operation.operation and operation.accepted is same as(false)) %}
-                                <tr data-problem="{{ problem ? 1 : 0 }}">
-                                    <td class="num-col text-muted">{{ operation.id }}</td>
-                                    <td>
-                                        <code>{{ operation.operation == 'reset' ? 'reset()' : operation.operation ~ '(' ~ operation.tokens ~ ')' }}</code>
-                                        {% if operation.via %}<span class="limiter-meta text-muted text-small">via {{ operation.via }}</span>{% endif %}
-                                    </td>
-                                    <td>{{ helper.result(operation) }}</td>
-                                    {% if policy != 'no_limit' %}
-                                        <td>{{ helper.remaining(operation) }}</td>
-                                    {% endif %}
-                                    {% if policy == 'compound' %}
-                                        <td class="col-wrap">{{ operation.decidedBy ?? '—' }}</td>
-                                    {% endif %}
-                                    {% if policy != 'no_limit' %}
-                                        <td>{{ helper.timing(operation, policy) }}</td>
-                                    {% endif %}
-                                    <td class="text-muted">{{ '%.2f'|format(operation.duration * 1000) }} ms</td>
-                                </tr>
+                        </thead>
+                        <tbody>
+                            {% for operation in collector.timeline %}
+                                {{ helper.timeline_rows(operation, [], operation.problem, 0) }}
                             {% endfor %}
                         </tbody>
-                    {% endfor %}
-                </table>
+                    </table>
+                </div>
             </div>
-        {% endfor %}
+
+            <div class="tab">
+                <h3 class="tab-title">By limiter <span class="badge">{{ limiters|length }}</span></h3>
+                <div class="tab-content">
+                    {% for limiter in limiters %}
+                        {% set policy = limiter.policy ?? 'custom' %}
+                        <div class="rate-limiter-section">
+                            <h3>
+                                {{ limiter.name }}
+                                <span class="label status-neutral">{{ policy }}</span>
+                                {% if limiter.settings %}
+                                    <span class="text-muted text-small">{{ limiter.settings }}</span>
+                                {% elseif limiter.children %}
+                                    <span class="text-muted text-small">{{ limiter.children|join(' + ') }}</span>
+                                {% endif %}
+                                <span class="rate-limiter-counts text-muted">
+                                    {{ limiter.calls }} {{ limiter.calls == 1 ? 'call' : 'calls' }}
+                                    {%- if limiter.rejected or limiter.errors %} · {{ limiter.rejected + limiter.errors }} rejected or failed{% endif %}
+                                </span>
+                            </h3>
+
+                            <table class="rate-limiter-table">
+                                <thead>
+                                    <tr>
+                                        <th class="col-id">#</th>
+                                        <th>Call</th>
+                                        <th class="col-result">Result</th>
+                                        <th class="col-tokens">Tokens</th>
+                                        <th>Resets / retry</th>
+                                        <th class="col-time text-right">Time</th>
+                                    </tr>
+                                </thead>
+                                {% for label, key in limiter.keys %}
+                                    <tbody>
+                                        <tr>
+                                            <th colspan="6" class="colored font-normal">
+                                                Key {{ label }}
+                                                <span class="text-muted">
+                                                    · {{ key.calls }} {{ key.calls == 1 ? 'call' : 'calls' }}
+                                                    {%- if key.problems %} · {{ key.problems }} rejected or failed{% endif %}
+                                                    {%- if key.last.operation == 'reset' %} · reset
+                                                    {%- elseif key.last.unlimited %} · no limit
+                                                    {%- elseif key.last.remaining is not null %} · now {{ key.last.remaining }} / {{ key.last.limit }} left{% endif %}
+                                                </span>
+                                            </th>
+                                        </tr>
+                                        {% for operation in key.operations %}
+                                            <tr data-problem="{{ operation.problem ? 1 : 0 }}" class="{{ operation.problem ? 'rate-limiter-rejected' }}">
+                                                <td class="text-muted">{{ operation.id }}</td>
+                                                <td class="col-wrap">
+                                                    <code>{{ operation.operation == 'reset' ? 'reset()' : operation.operation ~ '(' ~ operation.tokens ~ ')' }}</code>
+                                                    {% if operation.via %}<span class="rate-limiter-meta">via <a href="#rate-limiter-call-{{ operation.parent }}" data-timeline-link="{{ operation.parent }}">{{ operation.via }} #{{ operation.parent }}</a></span>{% endif %}
+                                                    {% if operation.decidedBy %}<span class="rate-limiter-meta">decided by {{ operation.decidedBy }}</span>{% endif %}
+                                                </td>
+                                                <td>{{ helper.result(operation) }}</td>
+                                                <td>{{ helper.tokens(operation) }}</td>
+                                                <td>{{ helper.timing(operation) }}</td>
+                                                <td class="text-muted text-right">{{ '%.2f'|format(operation.duration * 1000) }} ms</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                {% endfor %}
+                            </table>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
     {% endif %}
 {% endblock %}
 
@@ -273,31 +404,60 @@
 
     <script{% if csp_script_nonce is defined and csp_script_nonce %} nonce="{{ csp_script_nonce }}"{% endif %}>
         window.addEventListener('DOMContentLoaded', () => {
-            const policy = document.getElementById('rate-limiter-policy-filter');
-            const problems = document.getElementById('rate-limiter-problem-filter');
-            if (!policy || !problems) {
+            const filter = document.getElementById('rate-limiter-problem-filter');
+            if (!filter) {
                 return;
             }
 
+            const expanded = new Set();
+            document.querySelectorAll('[data-toggle-op]').forEach((button) => {
+                if ('1' === button.dataset.expanded) {
+                    expanded.add(button.dataset.toggleOp);
+                }
+                button.addEventListener('click', () => {
+                    const id = button.dataset.toggleOp;
+                    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+                    update();
+                });
+            });
+
             const update = () => {
+                document.querySelectorAll('#rate-limiter-timeline tr[data-op]').forEach((row) => {
+                    const ancestors = row.dataset.ancestors ? row.dataset.ancestors.split(' ') : [];
+                    const visible = (!filter.checked || '1' === row.dataset.topProblem) && ancestors.every((id) => expanded.has(id));
+                    row.style.display = visible ? '' : 'none';
+                });
+                document.querySelectorAll('[data-toggle-op]').forEach((button) => {
+                    button.setAttribute('aria-expanded', expanded.has(button.dataset.toggleOp) ? 'true' : 'false');
+                });
+
                 document.querySelectorAll('.rate-limiter-section').forEach((section) => {
                     let visibleRows = 0;
                     section.querySelectorAll('tbody').forEach((group) => {
                         let visibleInGroup = 0;
                         group.querySelectorAll('tr[data-problem]').forEach((row) => {
-                            const visible = !problems.checked || '1' === row.dataset.problem;
+                            const visible = !filter.checked || '1' === row.dataset.problem;
                             row.style.display = visible ? '' : 'none';
                             visibleInGroup += visible ? 1 : 0;
                         });
                         group.style.display = visibleInGroup ? '' : 'none';
                         visibleRows += visibleInGroup;
                     });
-                    section.style.display = visibleRows && (!policy.value || policy.value === section.dataset.policy) ? '' : 'none';
+                    section.style.display = visibleRows ? '' : 'none';
                 });
             };
 
-            policy.addEventListener('change', update);
-            problems.addEventListener('change', update);
+            document.querySelectorAll('[data-timeline-link]').forEach((link) => {
+                link.addEventListener('click', () => {
+                    document.querySelector('#rate-limiter-tabs > .tab-navigation .tab-control')?.click();
+                    const row = document.getElementById('rate-limiter-call-' + link.dataset.timelineLink);
+                    (row?.dataset.ancestors || '').split(' ').filter(Boolean).forEach((id) => expanded.add(id));
+                    update();
+                });
+            });
+
+            filter.addEventListener('change', update);
+            update();
         });
     </script>
 {% endblock %}

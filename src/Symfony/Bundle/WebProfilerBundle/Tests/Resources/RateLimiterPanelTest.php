@@ -44,6 +44,9 @@ class RateLimiterPanelTest extends TestCase
         $bucket->reserve();
         $builder->noop()->create('private-key')->consume();
         $limiter->reset();
+        $compound = $builder->compound($builder->fixedWindow('short', 1, '1 minute'))->create('private-key');
+        $compound->consume();
+        $compound->consume();
         $collector = new RateLimiterDataCollector($trace);
         $collector->collect($request, new Response());
         $collector = unserialize(serialize($collector));
@@ -54,36 +57,36 @@ class RateLimiterPanelTest extends TestCase
         $panel = $template->renderBlock('panel', ['collector' => $collector]);
         $menu = $template->renderBlock('menu', ['collector' => $collector]);
 
-        $this->assertMatchesRegularExpression('/<span class="value">3<\/span>\s*<span class="label">Limiters/', $panel);
-        $this->assertMatchesRegularExpression('/<span class="value">6<\/span>\s*<span class="label">Operations/', $panel);
-        $this->assertMatchesRegularExpression('/<span class="value">1<\/span>\s*<span class="label">Rejected/', $panel);
+        $this->assertMatchesRegularExpression('/<span class="value">5<\/span>\s*<span class="label">Limiters/', $panel);
+        $this->assertMatchesRegularExpression('/<span class="value">8<\/span>\s*<span class="label">Calls <span class="text-muted">\+ 2 inside compounds/', $panel);
+        $this->assertMatchesRegularExpression('/<span class="value">2<\/span>\s*<span class="label">Rejected/', $panel);
+        $this->assertMatchesRegularExpression('/Tightest limiter: <strong>reservation<\/strong> · key #1 · <strong class="rate-limiter-problem">0 \/ 2 left/', $panel);
         $this->assertStringNotContainsString('private-key', $panel);
         $this->assertStringContainsString('label-status-warning', $menu);
 
-        $api = $this->section($panel, 'api');
+        $timeline = $this->extract($panel, '/<table class="rate-limiter-table" id="rate-limiter-timeline">.*?<\/table>/s');
+        $this->assertMatchesRegularExpression('/<strong>api<\/strong>.*?consume\(1\)<\/code>.*?status-success">accepted<\/span>.*?1 \/ 2 left.*?resets <span title/s', $timeline);
+        $this->assertMatchesRegularExpression('/consume\(2\)<\/code>.*?status-warning">rejected<\/span>.*?needed 2, had 1.*?retry <span title/s', $timeline);
+        $this->assertStringContainsString('<span class="label status-neutral">reset</span>', $timeline);
+        $this->assertMatchesRegularExpression('/reserve\(2\)<\/code>.*?status-success">reserved<\/span>.*?acts <span title="[^"]*">now/s', $timeline);
+        $this->assertMatchesRegularExpression('/reserve\(1\)<\/code>.*?status-success">reserved<\/span>.*?acts <span title="[^"]*">in \d+ (s|min)</s', $timeline);
+        $this->assertMatchesRegularExpression('/status-success">unlimited<\/span>.*?no limit/s', $timeline);
+        $this->assertSame(2, substr_count($timeline, 'data-toggle-op='), 'Each compound call can be expanded.');
+        $this->assertMatchesRegularExpression('/data-toggle-op="\d+" data-expanded="1".*?decided by short.*?<strong>short<\/strong><span class="rate-limiter-decided">decided<\/span>/s', $timeline, 'A rejected compound call is expanded and flags the sub-limiter that rejected it.');
+
+        $api = $this->extract($panel, '/<h3>\s*api\s*<span.*?<\/table>/s');
         $this->assertMatchesRegularExpression('/<span class="label status-neutral">fixed_window<\/span>\s*<span class="text-muted text-small">2 per 1 minute<\/span>/', $api);
-        $this->assertMatchesRegularExpression('/3 calls · 1 rejected/', $api);
-        $this->assertMatchesRegularExpression('/<th>Window<\/th>/', $api);
-        $this->assertMatchesRegularExpression('/class="colored font-normal">Key #1</', $api);
-        $this->assertMatchesRegularExpression('/consume\(1\)<\/code>.*?status-success">accepted<\/span>.*?resets <span title/s', $api);
-        $this->assertMatchesRegularExpression('/consume\(2\)<\/code>.*?status-warning">rejected<\/span>.*?1 <span class="text-muted">\/ 2<\/span>.*?retry <span title/s', $api);
-        $this->assertStringContainsString('<span class="label status-neutral">reset</span>', $api);
+        $this->assertMatchesRegularExpression('/3 calls · 1 rejected or failed/', $api);
+        $this->assertMatchesRegularExpression('/Key #1\s*<span class="text-muted">\s*· 3 calls · 1 rejected or failed · reset\s*<\/span>/', $api);
 
-        $bucket = $this->section($panel, 'reservation');
-        $this->assertStringContainsString('burst 2, 1 per 1 minute', $bucket);
-        $this->assertStringContainsString('<th>Tokens left</th>', $bucket);
-        $this->assertMatchesRegularExpression('/reserve\(2\)<\/code>.*?status-success">reserved<\/span>.*?acts <span title="[^"]*">now/s', $bucket);
-        $this->assertMatchesRegularExpression('/reserve\(1\)<\/code>.*?status-success">reserved<\/span>.*?acts <span title="[^"]*">in \d+ (s|min)</s', $bucket);
-
-        $noop = $this->section($panel, 'noop');
-        $this->assertStringContainsString('status-success">unlimited</span>', $noop);
-        $this->assertStringNotContainsString('<th>Remaining</th>', $noop);
+        $this->assertStringContainsString('burst 2, 1 per 1 minute', $this->extract($panel, '/<h3>\s*reservation\s*<span.*?<\/table>/s'));
+        $this->assertMatchesRegularExpression('/via <a href="#rate-limiter-call-\d+" data-timeline-link="\d+">compound #\d+<\/a>/', $this->extract($panel, '/<h3>\s*short\s*<span.*?<\/table>/s'));
     }
 
-    private function section(string $panel, string $limiter): string
+    private function extract(string $panel, string $pattern): string
     {
-        $this->assertMatchesRegularExpression('/<h3>\s*'.preg_quote($limiter, '/').'\s*<span/', $panel, \sprintf('No section for limiter "%s".', $limiter));
-        preg_match('/<h3>\s*'.preg_quote($limiter, '/').'\s*<span.*?<\/table>/s', $panel, $match);
+        $this->assertMatchesRegularExpression($pattern, $panel);
+        preg_match($pattern, $panel, $match);
 
         return $match[0];
     }
