@@ -23,6 +23,8 @@ use Symfony\Component\HttpKernel\DataCollector\MemoryDataCollector;
 use Symfony\Component\HttpKernel\DataCollector\RequestDataCollector;
 use Symfony\Component\HttpKernel\DataCollector\TimeDataCollector;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\RateLimiter\DataCollector\RateLimiterDataCollector;
+use Symfony\Component\RateLimiter\Debug\RateLimiterTrace;
 
 return static function (ContainerConfigurator $container) {
     $container->services()
@@ -85,4 +87,18 @@ return static function (ContainerConfigurator $container) {
         ->set('.data_collector.command', CommandDataCollector::class)
             ->tag('data_collector', ['template' => '@WebProfiler/Collector/command.html.twig', 'id' => 'command', 'priority' => 335])
     ;
+
+    if (class_exists(RateLimiterTrace::class)) {
+        $container->services()
+            ->set('rate_limiter.trace', RateLimiterTrace::class)
+                ->args([
+                    service('request_stack'),
+                    service('profiler.is_disabled_state_checker')->nullOnInvalid(),
+                ])
+
+            ->set('data_collector.rate_limiter', RateLimiterDataCollector::class)
+                ->args([service('rate_limiter.trace')])
+                ->tag('data_collector', ['template' => '@WebProfiler/Collector/rate_limiter.html.twig', 'id' => 'rate_limiter', 'priority' => 270])
+        ;
+    }
 };

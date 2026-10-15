@@ -4,6 +4,7 @@ CHANGELOG
 8.2
 ---
 
+ * Add a rate limiter panel listing limiter operations grouped by limiter and key
  * Add dump indicator to profiler list view for profiles with dumped content
  * Log the profiler URL of each request at debug level on the `profiler` channel
  * Add a Key Management panel

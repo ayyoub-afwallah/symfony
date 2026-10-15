@@ -1,0 +1,303 @@
+{% extends '@WebProfiler/Profiler/layout.html.twig' %}
+
+{% block head %}
+    {{ parent() }}
+
+    <style>
+        .sf-profiler-rate-limiter {
+            table-layout: fixed;
+        }
+        .sf-profiler-rate-limiter td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+        .sf-profiler-rate-limiter .col-id { width: 4em; }
+        .sf-profiler-rate-limiter .col-call { width: 21%; }
+        .sf-profiler-rate-limiter .col-result { width: 12%; }
+        .sf-profiler-rate-limiter .col-duration { width: 9%; }
+        .sf-profiler-rate-limiter th { white-space: nowrap; }
+        .sf-profiler-rate-limiter td.col-wrap { white-space: normal; word-break: break-word; }
+        .sf-profiler-rate-limiter .limiter-meta {
+            display: block;
+        }
+        .sf-profiler-rate-limiter .label.status-neutral,
+        .rate-limiter-section h3 .label.status-neutral {
+            color: var(--badge-color);
+        }
+        .rate-limiter-section {
+            margin-top: 2em;
+        }
+        .rate-limiter-section h3 {
+            align-items: baseline;
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5em;
+            margin-bottom: .5em;
+        }
+        .rate-limiter-section h3 .limiter-counts {
+            font-size: var(--font-size-body);
+            font-weight: normal;
+            margin-left: auto;
+        }
+        .rate-limiter-filters {
+            align-items: center;
+            display: flex;
+            gap: 1.5em;
+            margin: 1em 0;
+        }
+    </style>
+{% endblock %}
+
+{% block toolbar %}
+    {% if collector.topLevelCount > 0 %}
+        {% set status_color = collector.errorCount ? 'red' : collector.rejectedCount ? 'yellow' : '' %}
+        {% set icon %}
+            {{ source('@WebProfiler/Icon/time.svg') }}
+            <span class="sf-toolbar-value">{{ collector.topLevelCount }}</span>
+        {% endset %}
+        {% set text %}
+            <div class="sf-toolbar-info-piece">
+                <b>Operations</b>
+                <span>{{ collector.topLevelCount }}</span>
+            </div>
+            <div class="sf-toolbar-info-piece">
+                <b>Rejected</b>
+                <span class="sf-toolbar-status {{ collector.rejectedCount ? 'sf-toolbar-status-yellow' }}">{{ collector.rejectedCount }}</span>
+            </div>
+            {% if collector.errorCount %}
+                <div class="sf-toolbar-info-piece">
+                    <b>Errors</b>
+                    <span class="sf-toolbar-status sf-toolbar-status-red">{{ collector.errorCount }}</span>
+                </div>
+            {% endif %}
+            <div class="sf-toolbar-info-piece">
+                <b>Total time</b>
+                <span>{{ '%.2f'|format(collector.totalDuration * 1000) }} ms</span>
+            </div>
+        {% endset %}
+        {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', {link: profiler_url, status: status_color}) }}
+    {% endif %}
+{% endblock %}
+
+{% block menu %}
+    <span class="label {{ collector.errorCount ? 'label-status-error' : collector.rejectedCount ? 'label-status-warning' }} {{ collector.topLevelCount == 0 ? 'disabled' }}">
+        <span class="icon" aria-hidden="true">{{ source('@WebProfiler/Icon/time.svg') }}</span>
+        <strong>Rate Limiter</strong>
+        {% if collector.topLevelCount %}
+            <span class="count"><span>{{ collector.topLevelCount }}</span></span>
+        {% endif %}
+    </span>
+{% endblock %}
+
+{% macro relative_time(timestamp, from) %}
+    {%- set seconds = timestamp - from -%}
+    <span title="{{ timestamp|round(0, 'floor')|date('Y-m-d H:i:s') }}">
+        {%- if seconds < 0.05 -%}now
+        {%- elseif seconds < 10 -%}in {{ seconds|round(1, 'ceil') }} s
+        {%- elseif seconds < 60 -%}in {{ seconds|round(0, 'ceil') }} s
+        {%- elseif seconds < 3600 -%}in {{ (seconds / 60)|round(0, 'ceil') }} min
+        {%- else -%}in {{ (seconds / 3600)|round(1) }} h
+        {%- endif -%}
+    </span>
+{% endmacro %}
+
+{% macro result(operation) %}
+    {%- if operation.exception -%}
+        {%- set result, status = 'failed', 'error' -%}
+    {%- elseif operation.operation == 'reset' -%}
+        {%- set result, status = 'reset', 'neutral' -%}
+    {%- elseif operation.operation == 'consume' and operation.tokens == 0 -%}
+        {%- set result, status = 'checked', 'neutral' -%}
+    {%- elseif operation.unlimited -%}
+        {%- set result, status = 'unlimited', 'success' -%}
+    {%- elseif operation.operation == 'reserve' -%}
+        {%- set result, status = 'reserved', 'success' -%}
+    {%- elseif operation.accepted is same as(false) -%}
+        {%- set result, status = 'rejected', 'warning' -%}
+    {%- elseif operation.accepted -%}
+        {%- set result, status = 'accepted', 'success' -%}
+    {%- else -%}
+        {%- set result, status = 'unknown', 'neutral' -%}
+    {%- endif -%}
+    <span class="label status-{{ status }}">{{ result }}</span>
+    {%- if operation.exception %}<abbr class="limiter-meta text-muted text-small" title="{{ operation.exception }}">{{ operation.exception|split('\\')|last }}</abbr>{% endif -%}
+{% endmacro %}
+
+{% macro timing(operation, policy) %}
+    {%- import _self as helper -%}
+    {%- if operation.timeToAct is not null -%}
+        acts {{ helper.relative_time(operation.timeToAct, operation.time) }}
+    {%- elseif operation.accepted is same as(false) and operation.retryAfter is not null -%}
+        retry {{ helper.relative_time(operation.retryAfter, operation.time) }}
+    {%- elseif operation.resetAt is not null -%}
+        {{ 'token_bucket' == policy ? 'full' : 'resets' }} {{ helper.relative_time(operation.resetAt, operation.time) }}
+    {%- else -%}
+        <span class="text-muted">—</span>
+    {%- endif -%}
+{% endmacro %}
+
+{% macro remaining(operation) %}
+    {%- if operation.unlimited -%}∞
+    {%- elseif operation.remaining is not null -%}{{ operation.remaining }} <span class="text-muted">/ {{ operation.limit }}</span>
+    {%- else -%}<span class="text-muted">—</span>
+    {%- endif -%}
+{% endmacro %}
+
+{% block panel %}
+    {% import _self as helper %}
+
+    <h2>Rate Limiter</h2>
+
+    {% if collector.operations is empty %}
+        <div class="empty empty-panel">
+            <p>No rate limiter operations were recorded.</p>
+            <p class="text-muted text-small">Limiters created outside the container or used outside of this request are not traced.</p>
+        </div>
+    {% else %}
+        {% set limiters = collector.limiters %}
+        <div class="metrics">
+            <div class="metric">
+                <span class="value">{{ limiters|length }}</span>
+                <span class="label">Limiters</span>
+            </div>
+            <div class="metric">
+                <span class="value">{{ collector.topLevelCount }}</span>
+                <span class="label">Operations</span>
+            </div>
+            <div class="metric">
+                <span class="value">{{ collector.rejectedCount }}</span>
+                <span class="label">Rejected</span>
+            </div>
+            <div class="metric">
+                <span class="value">{{ collector.errorCount }}</span>
+                <span class="label">Errors</span>
+            </div>
+            <div class="metric">
+                <span class="value">{{ '%.2f'|format(collector.totalDuration * 1000) }} <span class="unit">ms</span></span>
+                <span class="label">Total time</span>
+            </div>
+        </div>
+
+        <p class="text-muted">Operations grouped by limiter and key, numbered in call order. Limiters called by a compound limiter also appear in their own section.</p>
+
+        <div class="rate-limiter-filters">
+            <label>
+                Policy
+                <select id="rate-limiter-policy-filter">
+                    <option value="">all</option>
+                    {% for policy in limiters|map(l => (l.policy ?? 'custom'))|reduce((carry, p) => p in carry ? carry : carry|merge([p]), []) %}
+                        <option value="{{ policy }}">{{ policy }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label><input type="checkbox" id="rate-limiter-problem-filter"> only rejected or failed calls</label>
+        </div>
+
+        {% for limiter in limiters %}
+            {% set policy = limiter.policy ?? 'custom' %}
+            {% set columns = policy == 'no_limit' ? 3 : policy == 'compound' ? 6 : 5 %}
+            <div class="rate-limiter-section" data-policy="{{ policy }}">
+                <h3>
+                    {{ limiter.name }}
+                    <span class="label status-neutral">{{ policy }}</span>
+                    {% if limiter.settings %}
+                        <span class="text-muted text-small">{{ limiter.settings }}</span>
+                    {% elseif limiter.children %}
+                        <span class="text-muted text-small">of {{ limiter.children|join(' + ') }}</span>
+                    {% endif %}
+                    <span class="limiter-counts text-muted">
+                        {{ limiter.calls }} {{ limiter.calls == 1 ? 'call' : 'calls' }}
+                        {%- if limiter.rejected %} · {{ limiter.rejected }} rejected{% endif %}
+                        {%- if limiter.errors %} · {{ limiter.errors }} failed{% endif %}
+                    </span>
+                </h3>
+
+                <table class="sf-profiler-rate-limiter">
+                    <thead>
+                        <tr>
+                            <th class="num-col col-id">#</th>
+                            <th class="col-call">Call</th>
+                            <th class="col-result">Result</th>
+                            {% if policy == 'token_bucket' %}
+                                <th>Tokens left</th>
+                            {% elseif policy != 'no_limit' %}
+                                <th>Remaining</th>
+                            {% endif %}
+                            {% if policy == 'compound' %}
+                                <th>Decided by</th>
+                            {% endif %}
+                            {% if policy != 'no_limit' %}
+                                <th>{{ policy in ['fixed_window', 'sliding_window'] ? 'Window' : 'Timing' }}</th>
+                            {% endif %}
+                            <th class="col-duration">Duration</th>
+                        </tr>
+                    </thead>
+                    {% for key, operations in limiter.keys %}
+                        <tbody>
+                            <tr>
+                                <th colspan="{{ columns + 1 }}" class="colored font-normal">Key {{ key }}</th>
+                            </tr>
+                            {% for operation in operations %}
+                                {% set problem = operation.exception or ('reserve' != operation.operation and operation.accepted is same as(false)) %}
+                                <tr data-problem="{{ problem ? 1 : 0 }}">
+                                    <td class="num-col text-muted">{{ operation.id }}</td>
+                                    <td>
+                                        <code>{{ operation.operation == 'reset' ? 'reset()' : operation.operation ~ '(' ~ operation.tokens ~ ')' }}</code>
+                                        {% if operation.via %}<span class="limiter-meta text-muted text-small">via {{ operation.via }}</span>{% endif %}
+                                    </td>
+                                    <td>{{ helper.result(operation) }}</td>
+                                    {% if policy != 'no_limit' %}
+                                        <td>{{ helper.remaining(operation) }}</td>
+                                    {% endif %}
+                                    {% if policy == 'compound' %}
+                                        <td class="col-wrap">{{ operation.decidedBy ?? '—' }}</td>
+                                    {% endif %}
+                                    {% if policy != 'no_limit' %}
+                                        <td>{{ helper.timing(operation, policy) }}</td>
+                                    {% endif %}
+                                    <td class="text-muted">{{ '%.2f'|format(operation.duration * 1000) }} ms</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    {% endfor %}
+                </table>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+
+    <script{% if csp_script_nonce is defined and csp_script_nonce %} nonce="{{ csp_script_nonce }}"{% endif %}>
+        window.addEventListener('DOMContentLoaded', () => {
+            const policy = document.getElementById('rate-limiter-policy-filter');
+            const problems = document.getElementById('rate-limiter-problem-filter');
+            if (!policy || !problems) {
+                return;
+            }
+
+            const update = () => {
+                document.querySelectorAll('.rate-limiter-section').forEach((section) => {
+                    let visibleRows = 0;
+                    section.querySelectorAll('tbody').forEach((group) => {
+                        let visibleInGroup = 0;
+                        group.querySelectorAll('tr[data-problem]').forEach((row) => {
+                            const visible = !problems.checked || '1' === row.dataset.problem;
+                            row.style.display = visible ? '' : 'none';
+                            visibleInGroup += visible ? 1 : 0;
+                        });
+                        group.style.display = visibleInGroup ? '' : 'none';
+                        visibleRows += visibleInGroup;
+                    });
+                    section.style.display = visibleRows && (!policy.value || policy.value === section.dataset.policy) ? '' : 'none';
+                });
+            };
+
+            policy.addEventListener('change', update);
+            problems.addEventListener('change', update);
+        });
+    </script>
+{% endblock %}
