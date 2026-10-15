@@ -51,6 +51,7 @@
         .rate-limiter-facts { display: flex; flex-wrap: wrap; gap: .25em 2em; }
         .rate-limiter-facts dt { color: var(--color-muted); display: inline; margin-right: .4em; }
         .rate-limiter-facts dd { display: inline; margin: 0; }
+        .rate-limiter-facts .rate-limiter-reason, .rate-limiter-facts .rate-limiter-exception { color: var(--color-error); font-weight: bold; }
 
         .rate-limiter-section { margin-top: 1.5em; }
         .rate-limiter-section h3 { align-items: baseline; display: flex; flex-wrap: wrap; gap: .25em .75em; margin-bottom: .5em; }
@@ -162,29 +163,40 @@
 {% endmacro %}
 
 {% macro facts(operation) %}
-    {%- set facts = [] -%}
-    {%- if operation.rejected and operation.remaining is not null -%}
-        {%- set facts = facts|merge([['Reason', 'needed ' ~ operation.tokens ~ ', ' ~ operation.remaining ~ ' left']]) -%}
-    {%- endif -%}
-    {%- if operation.decidedBy -%}
-        {%- set facts = facts|merge([['Decided by', operation.decidedBy]]) -%}
-    {%- endif -%}
-    {%- if operation.timeToAct is not null -%}
-        {%- set facts = facts|merge([['Acts at', operation.timeToAct|round(0, 'floor')|date('H:i:s')]]) -%}
-    {%- elseif operation.rejected and operation.retryAfter is not null -%}
-        {%- set facts = facts|merge([['Retry at', operation.retryAfter|date('H:i:s')]]) -%}
-    {%- elseif operation.resetAt is not null and not operation.failed -%}
-        {%- set facts = facts|merge([['Resets at', operation.resetAt|date('H:i:s')]]) -%}
-    {%- endif -%}
-    {%- if operation.settings -%}
-        {%- set facts = facts|merge([['Limit', operation.settings]]) -%}
-    {%- endif -%}
-    {%- if facts -%}
-        <dl class="rate-limiter-facts">
-            {%- for fact in facts -%}
-                <div><dt>{{ fact[0] }}</dt><dd class="rate-limiter-mono">{{ fact[1] }}</dd></div>
-            {%- endfor -%}
-        </dl>
+    {%- set items -%}
+        {%- if operation.rejected and operation.remaining is not null -%}
+            <div><dt>Reason</dt><dd class="rate-limiter-mono rate-limiter-reason">needed {{ operation.tokens }}, {{ operation.remaining }} left</dd></div>
+        {%- endif -%}
+        {%- if operation.decidedBy -%}
+            <div><dt>Decided by</dt><dd class="rate-limiter-mono">{{ operation.decidedBy }}</dd></div>
+        {%- endif -%}
+        {%- if operation.timeToAct is not null -%}
+            <div><dt>Acts at</dt><dd class="rate-limiter-mono">{{ operation.timeToAct|round(0, 'floor')|date('H:i:s') }}</dd></div>
+        {%- elseif operation.rejected and operation.retryAfter is not null -%}
+            <div><dt>Retry at</dt><dd class="rate-limiter-mono">{{ operation.retryAfter|date('H:i:s') }}</dd></div>
+        {%- elseif operation.resetAt is not null and not operation.failed -%}
+            <div><dt>Resets at</dt><dd class="rate-limiter-mono">{{ operation.resetAt|date('H:i:s') }}</dd></div>
+        {%- endif -%}
+        {%- if operation.exception -%}
+            <div><dt>Exception</dt><dd class="rate-limiter-mono rate-limiter-exception"><abbr title="{{ operation.exception.class }}">{{ operation.exception.class|split('\\')|last }}</abbr>: {{ operation.exception.message }}</dd></div>
+        {%- endif -%}
+        {%- if operation.settings -%}
+            <div><dt>Limit</dt><dd class="rate-limiter-mono">{{ operation.settings }}</dd></div>
+        {%- endif -%}
+        {%- if operation.origin -%}
+            <div><dt>From</dt><dd class="rate-limiter-mono">
+                {%- if operation.origin.controller is not null -%}
+                    #[RateLimit]{% if operation.origin.controller %} {{ operation.origin.controller|abbr_method }}{% endif %}
+                {%- else -%}
+                    {%- set link = operation.origin.file|file_link(operation.origin.line) -%}
+                    {%- set label = (operation.origin.file|file_relative|default(operation.origin.file)) ~ ':' ~ operation.origin.line -%}
+                    {%- if link %}<a href="{{ link }}" title="{{ operation.origin.file }}">{{ label }}</a>{% else %}<abbr title="{{ operation.origin.file }}">{{ label }}</abbr>{% endif -%}
+                {%- endif -%}
+            </dd></div>
+        {%- endif -%}
+    {%- endset -%}
+    {%- if items|trim -%}
+        <dl class="rate-limiter-facts">{{ items }}</dl>
     {%- endif -%}
 {% endmacro %}
 
@@ -261,7 +273,7 @@
                                     <tr data-top="{{ operation.id }}" data-problem="{{ operation.problem ? 1 : 0 }}" id="rate-limiter-call-{{ operation.id }}" class="{{ operation.failed ? 'rate-limiter-failed' : operation.rejected ? 'rate-limiter-problem' }}">
                                         <td style="white-space: nowrap">
                                             {%- if expandable -%}
-                                                <button type="button" class="rate-limiter-toggle" data-toggle="{{ operation.id }}" data-expanded="{{ operation.problem and operation.children ? 1 : 0 }}" aria-expanded="false" aria-label="Show details of call {{ operation.id }}">
+                                                <button type="button" class="rate-limiter-toggle" data-toggle="{{ operation.id }}" data-expanded="{{ operation.failed or (operation.problem and operation.children) ? 1 : 0 }}" aria-expanded="false" aria-label="Show details of call {{ operation.id }}">
                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
                                                 </button>
                                             {%- else -%}

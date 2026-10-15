@@ -74,14 +74,15 @@ final class RateLimiterTrace
         $parent = end($parents) ?: null;
         $parents[] = $id;
         $this->parents[$request] = $parents;
+        $origin = null === $parent ? $this->findOrigin($request) : null;
         $start = microtime(true);
         $result = null;
-        $failed = false;
+        $exception = null;
 
         try {
             return $result = $call();
         } catch (\Throwable $e) {
-            $failed = true;
+            $exception = ['class' => $e::class, 'message' => $e->getMessage()];
             throw $e;
         } finally {
             $parents = $this->parents[$request];
@@ -107,10 +108,36 @@ final class RateLimiterTrace
                 'resetAt' => $limit?->getResetAt()?->getTimestamp(),
                 'retryAfter' => $limit?->getRetryAfter()->getTimestamp(),
                 'timeToAct' => $result instanceof Reservation ? $result->getTimeToAct() : null,
-                'failed' => $failed,
+                'failed' => null !== $exception,
+                'exception' => $exception,
+                'origin' => $origin,
             ];
             $this->operations[$request] = $operations;
         }
+    }
+
+    /**
+     * @return array{controller: ?string, file: ?string, line: ?int}|null
+     */
+    private function findOrigin(Request $request): ?array
+    {
+        $trace = debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS, 4);
+
+        foreach ($trace as $i => $frame) {
+            if (TraceableLimiter::class !== ($frame['class'] ?? null)) {
+                continue;
+            }
+
+            if ('Symfony\Component\HttpKernel\EventListener\RateLimitAttributeListener' === ($trace[$i + 1]['class'] ?? null)) {
+                $controller = $request->attributes->get('_controller');
+
+                return ['controller' => \is_string($controller) ? $controller : '', 'file' => null, 'line' => null];
+            }
+
+            return isset($frame['file']) ? ['controller' => null, 'file' => $frame['file'], 'line' => $frame['line'] ?? null] : null;
+        }
+
+        return null;
     }
 
     public function getOperations(Request $request): array

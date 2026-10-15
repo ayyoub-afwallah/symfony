@@ -308,7 +308,24 @@ class RateLimiterTracingTest extends TestCase
         $collector->collect($request, new Response());
         $this->assertSame(1, $collector->getErrorCount());
         $this->assertTrue($collector->getOperations()[0]['failed']);
-        $this->assertStringNotContainsString('private details', serialize($collector), 'The exception panel shows the exception; the profile does not keep a copy.');
+        $this->assertSame(['class' => \RuntimeException::class, 'message' => 'private details'], $collector->getOperations()[0]['exception']);
+    }
+
+    public function testTopLevelOperationsRecordWhereTheyWereCalledFrom()
+    {
+        $requests = new RequestStack();
+        $request = Request::create('/');
+        $requests->push($request);
+        $trace = new RateLimiterTrace($requests);
+        $builder = new TraceableRateLimiterBuilder(new RateLimiterBuilder(new InMemoryStorage()), $trace);
+        $compound = $builder->compound($builder->fixedWindow('short', 1, '1 minute'))->create('a');
+
+        $line = __LINE__ + 1;
+        $compound->consume();
+
+        $operations = $trace->getOperations($request);
+        $this->assertSame(['controller' => null, 'file' => __FILE__, 'line' => $line], $operations[0]['origin']);
+        $this->assertNull($operations[1]['origin'], 'Calls made by a compound limiter come from the compound call.');
     }
 }
 
